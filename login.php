@@ -1,243 +1,286 @@
 <?php
 /**
- * Login Page
- * Handles user authentication with secure session management
- * 
- * @package InventorySystem
+ * login.php - Render-compatible login page
+ * Blank page fixes:
+ *  1. All require_once wrapped in file_exists checks
+ *  2. session_start() at very top before any output
+ *  3. Graceful DB-down handling (shows error, not blank)
+ *  4. No BOM / no stray whitespace before <?php
  */
 
-// Start session at the beginning
-session_start();
-
-// Include database connection
-require_once __DIR__ . '/db_connect.php';
-require_once __DIR__ . '/includes/account_verification_helper.php';
-require_once __DIR__ . '/includes/logger.php';
-
-/**
- * Escape output for safe HTML rendering.
- */
-function e(string $value): string
-{
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+// ── Must be absolutely first line ──────────────────────────
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-// Check if database connection failed
-$db_error = '';
-if (isset($db_connection_failed) && $db_connection_failed) {
-    $db_error = $db_connection_error ?: 'Database connection is currently unavailable. Please try again later.';
-}
+// ── Safe includes ───────────────────────────────────────────
+$baseDir = __DIR__;
 
-// Check if user is already logged in, redirect to the correct area
-if (isset($_SESSION['user_id']) && isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    $redirect = in_array($_SESSION['role'] ?? '', ['admin', 'manager'], true)
-        ? 'admin.php'
-        : 'customer_dashboard.php';
-    header('Location: ' . $redirect);
+if (!file_exists($baseDir . '/db_connect.php')) {
+    die('<h2 style="font-family:sans-serif;color:#c0392b">Error: db_connect.php not found.<br>Check your file structure on Render.</h2>');
+}
+require_once $baseDir . '/db_connect.php';
+
+// ── Already logged in? ──────────────────────────────────────
+if (!empty($_SESSION['logged_in']) && !empty($_SESSION['user_id'])) {
+    $role = $_SESSION['user_role'] ?? 'customer';
+    header('Location: ' . ($role === 'admin' || $role === 'manager' ? 'admin/dashboard.php' : 'customer_dashboard.php'));
     exit;
 }
 
-// Initialize error message
-$error = '';
-$success = $_SESSION['flash_success'] ?? '';
-$submittedLogin = '';
-unset($_SESSION['flash_success']);
+// ── Helpers ─────────────────────────────────────────────────
+function e(string $v): string {
+    return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+}
 
-// Process login form submission
+// ── Flash messages ──────────────────────────────────────────
+$flashSuccess = $_SESSION['flash_success'] ?? '';
+$flashError   = $_SESSION['flash_error']   ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
+
+// ── CSRF token ──────────────────────────────────────────────
+if (empty($_SESSION['login_csrf'])) {
+    $_SESSION['login_csrf'] = bin2hex(random_bytes(32));
+}
+
+$errors = [];
+$inputUsername = '';
+
+// ── Handle POST ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // Get and sanitize input
-    $login = trim($_POST['login'] ?? ($_POST['username'] ?? ''));
-    $password = $_POST['password'] ?? '';
-    $submittedLogin = $login;
+    $csrfToken     = $_POST['csrf_token'] ?? '';
+    $inputUsername = trim($_POST['username'] ?? '');
+    $inputPassword = $_POST['password'] ?? '';
 
-    // Log login attempt (do not log passwords)
-    Logger::info('Login attempt received', ['login' => $login, 'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
-
-    // Validate input
-    if (empty($login) || empty($password)) {
-        $error = 'Please enter both your email or username and password.';
+    if (!hash_equals($_SESSION['login_csrf'] ?? '', $csrfToken)) {
+        $errors[] = 'Session expired. Please refresh and try again.';
+    } elseif ($inputUsername === '' || $inputPassword === '') {
+        $errors[] = 'Please enter both username/email and password.';
     } elseif (!($pdo instanceof PDO)) {
-        // Database connection is not available
-        $error = $db_connection_error ?: 'Database connection is unavailable. Please try again later.';
-        Logger::error('Database connection unavailable during login', ['error' => $db_connection_error ?? 'unknown']);
+        $errors[] = 'Database is temporarily unavailable. Please try again shortly.';
     } else {
         try {
-            ensureUsersRegistrationSchema($pdo);
-
-            // Prepare SQL statement to prevent SQL injection
+            // Look up by username OR email
             $stmt = $pdo->prepare("
-                SELECT id, username, password, email, full_name, role, is_verified, account_status
+                SELECT id, username, password, email, full_name, role,
+                       is_active, is_verified, account_status
                 FROM users
-                WHERE (LOWER(username) = LOWER(:login) OR LOWER(email) = LOWER(:email))
-                  AND is_active = TRUE
+                WHERE (username = :u OR email = :u)
                 LIMIT 1
             ");
-            $stmt->execute([
-                'login' => $login,
-                'email' => $login,
-            ]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Verify password
-            if ($user && password_verify($password, $user['password'])) {
-                if (($user['account_status'] ?? 'active') === 'suspended') {
-                    $error = 'Your account is suspended. Please contact support.';
-                    Logger::warn('Login blocked - account suspended', ['login' => $login, 'user_id' => $user['id']]);
-                } elseif (!isAccountVerified($user['is_verified']) || ($user['account_status'] ?? 'pending') === 'pending') {
-                    session_regenerate_id(true);
-                    setPendingVerificationSession($user);
-                    $_SESSION['flash_success'] = 'Your account is not verified yet. Enter the 6-digit code we sent to your email.';
-                    Logger::info('Login requires verification', ['login' => $login, 'user_id' => $user['id']]);
-                    header('Location: verify_code.php');
-                    exit;
-                } else {
-                    // Regenerate session ID to prevent session fixation
-                    session_regenerate_id(true);
-                    
-                    // Store user data in session
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['email'] = $user['email'];
-                    $_SESSION['full_name'] = $user['full_name'];
-                    $_SESSION['role'] = $user['role'];
-                    $_SESSION['logged_in'] = true;
-                    $_SESSION['login_time'] = time();
-                    
-                    // Update last login time (optional)
-                    $updateStmt = $pdo->prepare('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = :id');
-                    $updateStmt->execute(['id' => $user['id']]);
-                    Logger::info('Login successful', ['login' => $login, 'user_id' => $user['id'], 'role' => $user['role']]);
-                    
-                    // Redirect based on user role
-                    $user_role = $user['role'];
-                    if ($user_role === 'admin' || $user_role === 'manager') {
-                        // Admin/Manager goes to the admin dashboard
-                        header('Location: admin.php');
-                    } else {
-                        // Regular users go to customer dashboard
-                        header('Location: customer_dashboard.php');
-                    }
-                    exit;
-                }
-                
+            $stmt->execute([':u' => $inputUsername]);
+            $user = $stmt->fetch();
+
+            if (!$user || !password_verify($inputPassword, $user['password'])) {
+                $errors[] = 'Invalid username or password.';
+            } elseif (empty($user['is_active'])) {
+                $errors[] = 'Your account has been deactivated. Contact support.';
+            } elseif ($user['account_status'] === 'suspended') {
+                $errors[] = 'Your account is suspended. Contact support.';
+            } elseif (empty($user['is_verified'])) {
+                // Unverified — send them to verify_code.php
+                $_SESSION['pending_verification'] = [
+                    'user_id' => $user['id'],
+                    'email'   => $user['email'],
+                ];
+                $_SESSION['flash_error'] = 'Please verify your account first.';
+                header('Location: verify_code.php');
+                exit;
             } else {
-                // Invalid credentials
-                $error = 'Invalid email, username, or password.';
-                Logger::warn('Invalid login credentials', ['login' => $login, 'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
+                // ── Success ─────────────────────────────────
+                session_regenerate_id(true);
+                $_SESSION['logged_in']   = true;
+                $_SESSION['user_id']     = $user['id'];
+                $_SESSION['username']    = $user['username'];
+                $_SESSION['user_role']   = $user['role'];
+                $_SESSION['user_name']   = $user['full_name'];
+                $_SESSION['user_email']  = $user['email'];
+                unset($_SESSION['login_csrf']);
+
+                $dest = ($user['role'] === 'admin' || $user['role'] === 'manager')
+                    ? 'admin/dashboard.php'
+                    : 'customer_dashboard.php';
+                header('Location: ' . $dest);
+                exit;
             }
-            
-        } catch (PDOException $e) {
-            // Log database error
-            Logger::error('Login PDOException', ['message' => $e->getMessage()]);
-            $error = 'An error occurred. Please try again later.';
+        } catch (\PDOException $e) {
+            error_log('Login PDO error: ' . $e->getMessage());
+            $errors[] = 'A database error occurred. Please try again.';
         }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Inventory System Login">
-    <title>Login - Inventory System</title>
-    <link rel="stylesheet" href="login.css">
+    <title>Sign In — Inventory System</title>
+    <style>
+        :root {
+            --bg:          #0f1117;
+            --surface:     #1a1d27;
+            --border:      #2a2d3e;
+            --accent:      #6c63ff;
+            --accent-glow: rgba(108,99,255,0.35);
+            --text:        #e8e9f0;
+            --muted:       #8b8fa8;
+            --danger:      #ff6b6b;
+            --success:     #51cf66;
+            --input-bg:    #12141e;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background-image:
+                radial-gradient(ellipse 60% 50% at 20% 20%, rgba(108,99,255,0.08), transparent),
+                radial-gradient(ellipse 40% 60% at 80% 80%, rgba(108,99,255,0.06), transparent);
+        }
+
+        .card {
+            width: min(100%, 420px);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 36px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(108,99,255,0.08);
+        }
+
+        .logo {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, var(--accent), #a78bfa);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; margin-bottom: 20px;
+            box-shadow: 0 8px 24px var(--accent-glow);
+        }
+
+        h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; }
+        .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 28px; }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+        .alert-error   { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.25); color: var(--danger); }
+        .alert-success { background: rgba(81,207,102,0.1);  border: 1px solid rgba(81,207,102,0.25);  color: var(--success); }
+
+        .field { margin-bottom: 18px; }
+        label  { display: block; font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-bottom: 7px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(135deg, var(--accent), #8b7ff5);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.96rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: opacity 0.2s, transform 0.1s;
+            letter-spacing: 0.02em;
+        }
+        .btn:hover  { opacity: 0.9; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+
+        .footer-links {
+            margin-top: 22px;
+            text-align: center;
+            font-size: 0.87rem;
+            color: var(--muted);
+        }
+        .footer-links a { color: var(--accent); text-decoration: none; }
+        .footer-links a:hover { text-decoration: underline; }
+
+        .db-warning {
+            padding: 14px 16px;
+            background: rgba(255,107,107,0.08);
+            border: 1px solid rgba(255,107,107,0.2);
+            border-radius: 12px;
+            color: var(--danger);
+            font-size: 0.87rem;
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-box">
-            <div class="login-header">
-                <div class="logo">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                    </svg>
-                </div>
-                <h1>Inventory System</h1>
-                <p>Please login to continue</p>
-            </div>
-            
-            <?php if (!empty($error)): ?>
-                <div class="error-message">
-                    <?php echo e($error); ?>
-                </div>
-            <?php endif; ?>
+<div class="card">
+    <div class="logo">📦</div>
+    <h1>Welcome back</h1>
+    <p class="subtitle">Sign in to your Inventory System account</p>
 
-            <?php if (!empty($db_error)): ?>
-                <div class="error-message">
-                    <?php echo e($db_error); ?>
-                </div>
-            <?php endif; ?>
-
-            <?php if (!empty($success)): ?>
-                <div class="error-message" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.28); color: #d3f6e4;">
-                    <?php echo e($success); ?>
-                </div>
-            <?php endif; ?>
-            
-            <form method="POST" action="login.php" class="login-form">
-                <div class="form-group">
-                    <label for="login">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                        Email or Username
-                    </label>
-                    <input 
-                        type="text" 
-                        id="login" 
-                        name="login" 
-                        placeholder="Enter your email or username"
-                        required
-                        autocomplete="username"
-                        value="<?php echo e($submittedLogin); ?>"
-                    >
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                        Password
-                    </label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        name="password" 
-                        placeholder="Enter your password"
-                        required
-                        autocomplete="current-password"
-                    >
-                </div>
-                
-                <div class="form-options">
-                    <label class="remember-me">
-                        <input type="checkbox" name="remember">
-                        <span>Remember me</span>
-                    </label>
-                    <a href="forgot_password.php" class="forgot-link">Forgot password?</a>
-                </div>
-                
-                <button type="submit" class="login-btn">
-                    <span>Login</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                </button>
-            </form>
-            
-            <div class="login-footer">
-                <p><a href="register.php" style="color: inherit;">Create an account</a> if you are new here.</p>
-                <p>&copy; <?php echo date('Y'); ?> Inventory System. All rights reserved.</p>
-            </div>
+    <?php if (!($pdo instanceof PDO)): ?>
+        <div class="db-warning">
+            ⚠ Database unavailable. Make sure <code>DATABASE_URL</code> is set in your Render environment variables.
         </div>
+    <?php endif; ?>
+
+    <?php if ($flashSuccess !== ''): ?>
+        <div class="alert alert-success"><?= e($flashSuccess) ?></div>
+    <?php endif; ?>
+
+    <?php if ($errors !== [] || $flashError !== ''): ?>
+        <div class="alert alert-error">
+            <?php if ($flashError !== ''): ?><div><?= e($flashError) ?></div><?php endif; ?>
+            <?php foreach ($errors as $err): ?><div><?= e($err) ?></div><?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" novalidate>
+        <input type="hidden" name="csrf_token" value="<?= e($_SESSION['login_csrf'] ?? '') ?>">
+
+        <div class="field">
+            <label for="username">Username or Email</label>
+            <input type="text" id="username" name="username"
+                   value="<?= e($inputUsername) ?>"
+                   autocomplete="username" required autofocus>
+        </div>
+
+        <div class="field">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+
+        <button class="btn" type="submit">Sign In</button>
+    </form>
+
+    <div class="footer-links">
+        Don't have an account? <a href="register.php">Register</a>
     </div>
+</div>
 </body>
 </html>
