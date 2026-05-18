@@ -1,290 +1,238 @@
 <?php
-// includes/mail_helper.php
-
-use PHPMailer\PHPMailer\Exception;
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\SMTP;
-
-$mailAutoloadPath = __DIR__ . '/../vendor/autoload.php';
-
-if (file_exists($mailAutoloadPath)) {
-    require_once $mailAutoloadPath;
-}
-
-if (!class_exists('PHPMailer\\PHPMailer\\PHPMailer') && file_exists(__DIR__ . '/phpmailer_shim.php')) {
-    require_once __DIR__ . '/phpmailer_shim.php';
-}
-
-require_once __DIR__ . '/../config/mail.php';
+/**
+ * mail_helper.php  –  Raw SMTP socket mailer, port 25 (no TLS required)
+ *
+ * Place this file at your project ROOT (same level as index.php / register.php).
+ * It is loaded by includes/account_verification_helper.php via:
+ *   require_once __DIR__ . '/../mail_helper.php';
+ *
+ * ── Render.com Environment Variables (Settings → Environment) ───────────────
+ *   SMTP_HOST       SMTP relay hostname              (default: localhost)
+ *   SMTP_PORT       25                               (default: 25)
+ *   SMTP_FROM_ADDR  noreply@yourdomain.com           (required)
+ *   SMTP_FROM_NAME  Inventory System                 (default: Inventory System)
+ *   SMTP_USERNAME   leave blank for port-25 relay    (optional)
+ *   SMTP_PASSWORD   leave blank for port-25 relay    (optional)
+ *   APP_URL         https://inventory-system-cigq.onrender.com
+ */
 
 class MailHelper
 {
-    private ?PHPMailer $mail = null;
-    private array $config = [];
-    private bool $available = false;
-    private string $initializationError = '';
+    private string $host;
+    private int    $port;
+    private string $fromAddr;
+    private string $fromName;
+    private string $username;
+    private string $password;
+    private int    $timeout = 15;
 
     public function __construct()
     {
-        $this->config = require __DIR__ . '/../config/mail.php';
-
-        if (!class_exists(PHPMailer::class)) {
-            $this->initializationError = 'PHPMailer is not installed. Run composer install to enable email sending.';
-            error_log($this->initializationError);
-            return;
-        }
-
-        $this->mail = new PHPMailer(true);
-        $this->setupMailer();
-        $this->available = true;
+        $this->host     = (string)(getenv('SMTP_HOST')      ?: 'localhost');
+        $this->port     = (int)   (getenv('SMTP_PORT')      ?: 25);
+        $this->fromAddr = (string)(getenv('SMTP_FROM_ADDR') ?: 'no-reply@inventory-system.local');
+        $this->fromName = (string)(getenv('SMTP_FROM_NAME') ?: 'Inventory System');
+        $this->username = (string)(getenv('SMTP_USERNAME')  ?: '');
+        $this->password = (string)(getenv('SMTP_PASSWORD')  ?: '');
     }
 
-    private function setupMailer(): void
-    {
-        if (!$this->mail instanceof PHPMailer) {
-            return;
-        }
-
-        $this->mail->SMTPDebug = SMTP::DEBUG_OFF;
-        $this->mail->isSMTP();
-        $this->mail->Host = $this->config['smtp_host'];
-        $this->mail->SMTPAuth = $this->config['smtp_auth'];
-        $this->mail->Username = $this->config['smtp_username'];
-        $this->mail->Password = $this->config['smtp_password'];
-        $this->mail->SMTPSecure = $this->config['smtp_secure'];
-        $this->mail->Port = $this->config['smtp_port'];
-
-        $this->mail->setFrom($this->config['from_email'], $this->config['from_name']);
-        $this->mail->addReplyTo($this->config['reply_to'], $this->config['reply_to_name']);
-
-        $this->mail->isHTML(true);
-        $this->mail->CharSet = 'UTF-8';
-    }
-
-    public function isAvailable(): bool
-    {
-        return $this->available;
-    }
-
-    public function getInitializationError(): string
-    {
-        return $this->initializationError;
-    }
+    // ── PUBLIC API ────────────────────────────────────────────────────────────
 
     /**
-     * Send an email using PHPMailer, SMTP socket fallback, or PHP mail().
-     *
-     * @param string $to
-     * @param string $subject
-     * @param string $htmlBody
-     * @param string $altBody
-     * @return array{success: bool, message: string}
+     * @return array{success:bool, message:string}
      */
-    public function sendEmail(string $to, string $subject, string $htmlBody, string $altBody = ''): array
-    {
-        if ($this->available && $this->mail instanceof PHPMailer) {
-            try {
-                $this->mail->clearAddresses();
-                $this->mail->addAddress($to);
-                $this->mail->Subject = $subject;
-                $this->mail->Body = $htmlBody;
-                $this->mail->AltBody = $altBody ?: strip_tags($htmlBody);
-                $this->mail->send();
-
-                return ['success' => true, 'message' => 'Email sent successfully'];
-            } catch (Exception $e) {
-                error_log('Mailer Error: ' . $this->mail->ErrorInfo . ' | ' . $e->getMessage());
-                $this->initializationError = $this->mail->ErrorInfo ?: $e->getMessage();
-            }
-        }
-
-        if ($this->sendEmailViaSmtpSocket($to, $subject, $htmlBody, $altBody)) {
-            return ['success' => true, 'message' => 'Email sent successfully using SMTP fallback'];
-        }
-
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-type: text/html; charset=UTF-8',
-            'From: ' . $this->config['from_name'] . ' <' . $this->config['from_email'] . '>',
-            'Reply-To: ' . $this->config['reply_to'],
-        ];
-
-        $sent = @mail($to, $subject, $htmlBody, implode("\r\n", $headers));
-        if ($sent) {
-            return ['success' => true, 'message' => 'Email sent successfully using the server mail() function.'];
-        }
-
-        return [
-            'success' => false,
-            'message' => $this->initializationError !== '' ? $this->initializationError : 'Email service is not available on this server yet.'
-        ];
+    public function sendRegistrationVerificationCode(
+        string            $toEmail,
+        string            $toName,
+        string            $code,
+        DateTimeImmutable $expiry,
+        string            $verifyUrl
+    ): array {
+        return $this->send(
+            $toEmail,
+            $toName,
+            'Your Verification Code – Inventory System',
+            $this->plainText($toName, $code, $expiry->format('M j, Y g:i A'), $verifyUrl),
+            $this->htmlBody ($toName, $code, $expiry->format('M j, Y g:i A'), $verifyUrl)
+        );
     }
 
-    private function sendEmailViaSmtpSocket(string $to, string $subject, string $htmlBody, string $altBody = ''): bool
+    // ── SMTP TRANSPORT ────────────────────────────────────────────────────────
+
+    private function send(string $toEmail, string $toName, string $subject,
+                          string $plain, string $html): array
     {
-        if (empty($this->config['smtp_host']) || empty($this->config['smtp_port'])) {
-            return false;
+        $errNo = $errStr = 0;
+        $sock  = @fsockopen($this->host, $this->port, $errNo, $errStr, $this->timeout);
+        if ($sock === false) {
+            $msg = "SMTP connect {$this->host}:{$this->port} failed ({$errNo}): {$errStr}";
+            error_log($msg);
+            return ['success' => false, 'message' => $msg];
         }
-
-        $host = $this->config['smtp_host'];
-        $port = (int)$this->config['smtp_port'];
-        $security = strtolower($this->config['smtp_secure'] ?? '');
-        $transportHost = $security === 'ssl' ? 'ssl://' . $host : $host;
-
-        $socket = @fsockopen($transportHost, $port, $errno, $errstr, 30);
-        if (!$socket) {
-            error_log("SMTP fallback connect failed: {$errno} {$errstr}");
-            return false;
-        }
-
-        stream_set_timeout($socket, 30);
+        stream_set_timeout($sock, $this->timeout);
 
         try {
-            $this->expectSmtpResponse($socket, 220);
+            $this->expect($this->read($sock), '220', 'greeting');
 
-            $hostName = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            fwrite($socket, "EHLO {$hostName}\r\n");
-            $this->expectSmtpResponse($socket, 250);
-
-            if ($security === 'tls' || $security === 'starttls') {
-                fwrite($socket, "STARTTLS\r\n");
-                $this->expectSmtpResponse($socket, 220);
-                stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
-                fwrite($socket, "EHLO {$hostName}\r\n");
-                $this->expectSmtpResponse($socket, 250);
+            $hn   = gethostname() ?: 'localhost';
+            $ehlo = $this->cmd($sock, "EHLO {$hn}");
+            if (!$this->is($ehlo, '250')) {
+                $this->expect($this->cmd($sock, "HELO {$hn}"), '250', 'HELO');
+                $ehlo = '';
             }
 
-            if (!empty($this->config['smtp_auth'])) {
-                fwrite($socket, "AUTH LOGIN\r\n");
-                $this->expectSmtpResponse($socket, 334);
-                fwrite($socket, base64_encode($this->config['smtp_username']) . "\r\n");
-                $this->expectSmtpResponse($socket, 334);
-                fwrite($socket, base64_encode($this->config['smtp_password']) . "\r\n");
-                $this->expectSmtpResponse($socket, 235);
+            if ($this->username !== '') {
+                if (str_contains($ehlo, 'AUTH LOGIN'))      $this->authLogin($sock);
+                elseif (str_contains($ehlo, 'AUTH PLAIN'))  $this->authPlain($sock);
             }
 
-            fwrite($socket, "MAIL FROM:<{$this->config['from_email']}>\r\n");
-            $this->expectSmtpResponse($socket, 250);
+            $this->expect($this->cmd($sock, "MAIL FROM:<{$this->fromAddr}>"), '250', 'MAIL FROM');
+            $this->expect($this->cmd($sock, "RCPT TO:<{$toEmail}>"),          '250', 'RCPT TO');
+            $this->expect($this->cmd($sock, 'DATA'),                          '354', 'DATA');
 
-            fwrite($socket, "RCPT TO:<{$to}>\r\n");
-            $this->expectSmtpResponse($socket, 250);
+            fwrite($sock, $this->buildMessage($toEmail, $toName, $subject, $plain, $html) . "\r\n.\r\n");
+            $this->expect($this->read($sock), '250', 'message accepted');
 
-            fwrite($socket, "DATA\r\n");
-            $this->expectSmtpResponse($socket, 354);
+            $this->cmd($sock, 'QUIT');
 
-            $headers = [
-                "From: {$this->config['from_name']} <{$this->config['from_email']}>",
-                "Reply-To: {$this->config['reply_to']}",
-                "MIME-Version: 1.0",
-                "Content-Type: text/html; charset=UTF-8",
-                "Subject: {$subject}",
-                'Date: ' . date('r'),
-            ];
-
-            $message = implode("\r\n", $headers) . "\r\n\r\n" . $htmlBody;
-            fwrite($socket, $message . "\r\n.\r\n");
-            $this->expectSmtpResponse($socket, 250);
-
-            fwrite($socket, "QUIT\r\n");
-            fclose($socket);
-
-            return true;
         } catch (\RuntimeException $e) {
-            error_log('SMTP fallback error: ' . $e->getMessage());
-            fclose($socket);
-            return false;
-        }
-    }
-
-    /**
-     * Read SMTP response lines from the socket and validate status code.
-     *
-     * @param resource $socket
-     * @param int $expectedCode
-     * @return void
-     * @throws \RuntimeException
-     */
-    private function expectSmtpResponse($socket, int $expectedCode): void
-    {
-        $response = '';
-        while (($line = fgets($socket, 515)) !== false) {
-            $response .= $line;
-            if (substr($line, 3, 1) === ' ') {
-                break;
-            }
+            fclose($sock);
+            error_log('MailHelper: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
 
-        if ((int)substr($response, 0, 3) !== $expectedCode) {
-            throw new \RuntimeException('SMTP error: ' . trim($response));
+        fclose($sock);
+        return ['success' => true, 'message' => 'Email sent successfully.'];
+    }
+
+    private function authLogin($sock): void
+    {
+        $this->expect($this->cmd($sock, 'AUTH LOGIN'), '334', 'AUTH LOGIN');
+        $this->expect($this->cmd($sock, base64_encode($this->username)), '334', 'AUTH LOGIN user');
+        $this->expect($this->cmd($sock, base64_encode($this->password)), '235', 'AUTH LOGIN pass');
+    }
+
+    private function authPlain($sock): void
+    {
+        $cred = base64_encode("\0{$this->username}\0{$this->password}");
+        $this->expect($this->cmd($sock, "AUTH PLAIN {$cred}"), '235', 'AUTH PLAIN');
+    }
+
+    private function read($sock): string
+    {
+        $r = '';
+        while (!feof($sock)) {
+            $line = fgets($sock, 512);
+            if ($line === false) break;
+            $r .= $line;
+            if (strlen($line) >= 4 && $line[3] !== '-') break;
         }
+        return $r;
     }
 
-    public function sendVerificationEmail(string $to, string $name, string $code, \DateTimeInterface $expiry, string $verifyUrl): array
+    private function cmd($sock, string $line): string
     {
-        $subject = 'Verify your Inventory System account';
-        $htmlBody = sprintf(
-            '<h1>Verify your account</h1><p>Hi %s,</p><p>Your verification code is <strong>%s</strong>.</p><p>This code expires at %s.</p><p><a href="%s">Click here to verify your account</a>.</p><p>If you did not request this verification, please ignore this email.</p>',
-            htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars($code, ENT_QUOTES, 'UTF-8'),
-            $expiry->format('Y-m-d H:i'),
-            htmlspecialchars($verifyUrl, ENT_QUOTES, 'UTF-8')
-        );
-        $altBody = sprintf(
-            "Hello %s,
-
-Your verification code is %s.
-This code expires at %s.
-
-Visit %s to verify your account.
-
-If you did not request this verification, please ignore this email.",
-            $name,
-            $code,
-            $expiry->format('Y-m-d H:i'),
-            $verifyUrl
-        );
-
-        return $this->sendEmail($to, $subject, $htmlBody, $altBody);
+        fwrite($sock, $line . "\r\n");
+        return $this->read($sock);
     }
 
-    public function sendRegistrationVerificationCode(string $to, string $name, string $code, \DateTimeInterface $expiry, string $verifyUrl): array
+    private function is(string $r, string $code): bool { return str_starts_with(trim($r), $code); }
+
+    private function expect(string $r, string $code, string $ctx): void
     {
-        return $this->sendVerificationEmail($to, $name, $code, $expiry, $verifyUrl);
+        if (!$this->is($r, $code))
+            throw new \RuntimeException("SMTP [{$ctx}] expected {$code}, got: " . trim($r));
     }
 
-    public function sendOrderConfirmation(string $to, string $name, array $orderDetails): array
+    // ── MESSAGE BUILDER ───────────────────────────────────────────────────────
+
+    private function buildMessage(string $toEmail, string $toName, string $subject,
+                                   string $plain, string $html): string
     {
-        $orderNumber = $orderDetails['order_number'] ?? 'N/A';
-        $subject = sprintf('Order Confirmation #%s', $orderNumber);
-        $status = $orderDetails['status'] ?? 'Pending';
-        $date = $orderDetails['date'] ?? date('Y-m-d H:i');
-        $total = $orderDetails['total'] ?? '0.00';
+        $b   = '----=_Part_' . bin2hex(random_bytes(8));
+        $enc = fn(string $s) => '=?UTF-8?B?' . base64_encode($s) . '?=';
 
-        $htmlBody = sprintf(
-            '<h1>Order Confirmation</h1><p>Hi %s,</p><p>Thank you for your order. Here are the details:</p><ul><li><strong>Order Number:</strong> %s</li><li><strong>Date:</strong> %s</li><li><strong>Total:</strong> $%s</li><li><strong>Status:</strong> %s</li></ul><p>We will notify you once your order ships.</p>',
-            htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars($orderNumber, ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars($date, ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars($total, ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars($status, ENT_QUOTES, 'UTF-8')
-        );
-        $altBody = sprintf(
-            "Hello %s,
+        $hdr  = "Date: " . date('r') . "\r\n";
+        $hdr .= "From: {$enc($this->fromName)} <{$this->fromAddr}>\r\n";
+        $hdr .= "To: {$enc($toName)} <{$toEmail}>\r\n";
+        $hdr .= "Subject: {$enc($subject)}\r\n";
+        $hdr .= "MIME-Version: 1.0\r\n";
+        $hdr .= "Content-Type: multipart/alternative; boundary=\"{$b}\"\r\n";
+        $hdr .= "X-Mailer: InventorySystem/2.0\r\n";
 
-Thank you for your order.
-Order Number: %s
-Date: %s
-Total: $%s
-Status: %s
+        $body  = "--{$b}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+        $body .= chunk_split(base64_encode($plain)) . "\r\n";
+        $body .= "--{$b}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+        $body .= chunk_split(base64_encode($html)) . "\r\n";
+        $body .= "--{$b}--";
 
-We will notify you once your order ships.",
-            $name,
-            $orderNumber,
-            $date,
-            $total,
-            $status
-        );
+        return $hdr . "\r\n" . $body;
+    }
 
-        return $this->sendEmail($to, $subject, $htmlBody, $altBody);
+    // ── CONTENT ───────────────────────────────────────────────────────────────
+
+    private function plainText(string $name, string $code, string $expiry, string $url): string
+    {
+        return "Hello {$name},\r\n\r\n"
+             . "Your 6-digit verification code is: {$code}\r\n\r\n"
+             . "It expires at: {$expiry}\r\n\r\n"
+             . "Visit {$url} to activate your account.\r\n\r\n"
+             . "If you did not register, ignore this email.\r\n\r\n"
+             . "— The Inventory System Team";
+    }
+
+    private function htmlBody(string $name, string $code, string $expiry, string $url): string
+    {
+        $sName   = htmlspecialchars($name,   ENT_QUOTES, 'UTF-8');
+        $sExpiry = htmlspecialchars($expiry, ENT_QUOTES, 'UTF-8');
+        $sUrl    = htmlspecialchars($url,    ENT_QUOTES, 'UTF-8');
+        $year    = date('Y');
+
+        // Individual digit boxes
+        $boxes = '';
+        foreach (str_split($code) as $d) {
+            $boxes .= "<span style='display:inline-block;width:44px;height:52px;line-height:52px;"
+                    . "text-align:center;font-size:26px;font-weight:800;border:2px solid #e6bc67;"
+                    . "border-radius:10px;margin:0 3px;color:#1f1a11;background:#fffdf7;'>{$d}</span>";
+        }
+
+        return <<<HTML
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Verify Your Account</title></head>
+<body style="margin:0;padding:0;background:#f8f3e8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f3e8;padding:32px 0;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0"
+  style="background:#fff;border-radius:20px;border:1px solid #eadfcb;
+         box-shadow:0 8px 32px rgba(93,67,28,.10);overflow:hidden;max-width:100%;">
+  <tr><td style="background:linear-gradient(135deg,#c59031,#e6bc67);padding:24px 36px;text-align:center;">
+    <h1 style="margin:0;color:#1f1a11;font-size:20px;font-weight:800;">Inventory System</h1>
+  </td></tr>
+  <tr><td style="padding:36px 36px 20px;">
+    <h2 style="margin:0 0 10px;font-size:20px;color:#1e1f24;">Hello, {$sName}!</h2>
+    <p style="margin:0 0 22px;color:#6d6458;line-height:1.7;">
+      Use the 6-digit code below to verify your account.<br>
+      It expires at <strong>{$sExpiry}</strong>.
+    </p>
+    <div style="text-align:center;margin:24px 0;">{$boxes}</div>
+    <div style="text-align:center;margin:28px 0 18px;">
+      <a href="{$sUrl}" style="display:inline-block;background:linear-gradient(135deg,#c59031,#e6bc67);
+         color:#1f1a11;text-decoration:none;font-weight:700;font-size:15px;
+         padding:14px 36px;border-radius:12px;">Go to Verify Page</a>
+    </div>
+    <p style="margin:0;color:#6d6458;font-size:13px;line-height:1.6;">
+      If you did not create an account, you can safely ignore this email.
+    </p>
+  </td></tr>
+  <tr><td style="padding:14px 36px 26px;border-top:1px solid #eadfcb;">
+    <p style="margin:0;font-size:12px;color:#a0937d;text-align:center;">
+      &copy; {$year} Inventory System &nbsp;&middot;&nbsp; Automated message, do not reply.
+    </p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>
+HTML;
     }
 }
