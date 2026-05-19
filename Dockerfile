@@ -1,10 +1,9 @@
 # Dockerfile — PHP 8.2 + Apache + PostgreSQL + Composer
-# Place this file in the project ROOT
-# Render reads this when render.yaml has:  env: docker
+# No external start.sh needed — startup script is written inline
 
 FROM php:8.2-apache
 
-# ── 1. System packages needed to compile PHP extensions ──────────────────────
+# ── 1. System packages ────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
         libpq-dev \
         libzip-dev \
@@ -14,25 +13,25 @@ RUN apt-get update && apt-get install -y \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ── 2. PHP extensions the app needs ──────────────────────────────────────────
+# ── 2. PHP extensions ─────────────────────────────────────────────────────────
 RUN docker-php-ext-install \
         pdo \
         pdo_pgsql \
         pgsql \
         zip
 
-# ── 3. Composer (grabbed from official image) ─────────────────────────────────
+# ── 3. Composer ───────────────────────────────────────────────────────────────
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# ── 4. Apache: enable mod_rewrite for .htaccess support ──────────────────────
+# ── 4. Apache mod_rewrite ─────────────────────────────────────────────────────
 RUN a2enmod rewrite \
     && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
-# ── 5. Copy all project files into the image ──────────────────────────────────
+# ── 5. App files ──────────────────────────────────────────────────────────────
 WORKDIR /var/www/html
 COPY . .
 
-# ── 6. Install PHP dependencies (PHPMailer etc. from composer.json) ───────────
+# ── 6. PHP dependencies (PHPMailer etc.) ──────────────────────────────────────
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # ── 7. Permissions ────────────────────────────────────────────────────────────
@@ -41,9 +40,7 @@ RUN mkdir -p /var/www/html/uploads/products \
     && chmod -R 755 /var/www/html \
     && chmod -R 775 /var/www/html/uploads
 
-# ── 8. Apache virtual host ────────────────────────────────────────────────────
-# Render assigns $PORT at runtime (typically 10000).
-# We write a template here; start.sh patches the real port value at startup.
+# ── 8. Apache virtual host config (port patched at runtime) ───────────────────
 RUN printf '<VirtualHost *:__PORT__>\n\
     DocumentRoot /var/www/html\n\
     <Directory /var/www/html>\n\
@@ -51,7 +48,6 @@ RUN printf '<VirtualHost *:__PORT__>\n\
         AllowOverride All\n\
         Require all granted\n\
     </Directory>\n\
-    # Pass all env vars Render injects into PHP\n\
     PassEnv DATABASE_URL DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD\n\
     PassEnv APP_URL APP_ENV APP_DEBUG\n\
     PassEnv SMTP_HOST SMTP_PORT SMTP_FROM_ADDR SMTP_FROM_NAME SMTP_USERNAME SMTP_PASSWORD\n\
@@ -59,11 +55,17 @@ RUN printf '<VirtualHost *:__PORT__>\n\
     CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
 </VirtualHost>\n' > /etc/apache2/sites-available/000-default.conf
 
-# ── 9. Startup script ─────────────────────────────────────────────────────────
-COPY docker/start.sh /start.sh
-RUN chmod +x /start.sh
+# ── 9. Startup script written directly into the image ────────────────────────
+# No external file needed — this avoids the "docker/start.sh not found" error
+RUN printf '#!/bin/bash\n\
+set -e\n\
+PORT="${PORT:-10000}"\n\
+echo "==> Apache starting on port ${PORT}"\n\
+sed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf\n\
+sed -i "s/__PORT__/${PORT}/" /etc/apache2/sites-available/000-default.conf\n\
+exec apache2-foreground\n' > /start.sh \
+    && chmod +x /start.sh
 
-# Render connects to this port — must match what Apache listens on
 EXPOSE 10000
 
 CMD ["/start.sh"]
