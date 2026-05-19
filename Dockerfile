@@ -1,5 +1,5 @@
 # Dockerfile — PHP 8.2 + Apache + PostgreSQL + Composer
-# No external start.sh needed — startup script is written inline
+# Fixed: mod_env enabled, all env vars passed to PHP via Apache
 
 FROM php:8.2-apache
 
@@ -23,15 +23,15 @@ RUN docker-php-ext-install \
 # ── 3. Composer ───────────────────────────────────────────────────────────────
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# ── 4. Apache mod_rewrite ─────────────────────────────────────────────────────
-RUN a2enmod rewrite \
+# ── 4. Apache modules: rewrite + env (env needed for PassEnv to work) ─────────
+RUN a2enmod rewrite env \
     && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
 # ── 5. App files ──────────────────────────────────────────────────────────────
 WORKDIR /var/www/html
 COPY . .
 
-# ── 6. PHP dependencies (PHPMailer etc.) ──────────────────────────────────────
+# ── 6. PHP dependencies ───────────────────────────────────────────────────────
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # ── 7. Permissions ────────────────────────────────────────────────────────────
@@ -40,7 +40,12 @@ RUN mkdir -p /var/www/html/uploads/products \
     && chmod -R 755 /var/www/html \
     && chmod -R 775 /var/www/html/uploads
 
-# ── 8. Apache virtual host config (port patched at runtime) ───────────────────
+# ── 8. PHP ini: make getenv() work under Apache + FPM ────────────────────────
+# variables_order must include E (environment) so $_ENV and getenv() work
+RUN echo "variables_order = EGPCS" >> /usr/local/etc/php/conf.d/render.ini \
+    && echo "variables_order = EGPCS" >> /usr/local/etc/php/php.ini || true
+
+# ── 9. Apache virtual host — port patched at runtime by start script ──────────
 RUN printf '<VirtualHost *:__PORT__>\n\
     DocumentRoot /var/www/html\n\
     <Directory /var/www/html>\n\
@@ -48,15 +53,16 @@ RUN printf '<VirtualHost *:__PORT__>\n\
         AllowOverride All\n\
         Require all granted\n\
     </Directory>\n\
-    PassEnv DATABASE_URL DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD\n\
+    # Pass Render environment variables into PHP\n\
+    PassEnv DATABASE_URL\n\
+    PassEnv DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD\n\
     PassEnv APP_URL APP_ENV APP_DEBUG\n\
     PassEnv SMTP_HOST SMTP_PORT SMTP_FROM_ADDR SMTP_FROM_NAME SMTP_USERNAME SMTP_PASSWORD\n\
     ErrorLog ${APACHE_LOG_DIR}/error.log\n\
     CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
 </VirtualHost>\n' > /etc/apache2/sites-available/000-default.conf
 
-# ── 9. Startup script written directly into the image ────────────────────────
-# No external file needed — this avoids the "docker/start.sh not found" error
+# ── 10. Inline startup script — patches Apache port at container start ─────────
 RUN printf '#!/bin/bash\n\
 set -e\n\
 PORT="${PORT:-10000}"\n\
