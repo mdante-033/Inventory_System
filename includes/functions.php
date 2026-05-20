@@ -4,10 +4,8 @@
  * Global helper functions for the Inventory System
  */
 
-// Start session if not started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/../config/constants.php';
+require_once __DIR__ . '/session.php';
 
 /**
  * Redirect to a specific URL
@@ -59,7 +57,7 @@ function generateRandomString($length = 10) {
     $charactersLength = strlen($characters);
     $randomString = '';
     for ($i = 0; $i < $length; $i++) {
-        $randomString .= $characters[rand(0, $charactersLength - 1)];
+        $randomString .= $characters[random_int(0, $charactersLength - 1)];
     }
     return $randomString;
 }
@@ -245,20 +243,36 @@ function displayFlashMessages() {
  * Generate CSRF token
  */
 function generateCSRFToken() {
-    if (!isset($_SESSION[CSRF_TOKEN_NAME])) {
-        $_SESSION[CSRF_TOKEN_NAME] = generateRandomString(CSRF_TOKEN_LENGTH);
+    $tokenName = defined('CSRF_TOKEN_NAME') ? CSRF_TOKEN_NAME : 'csrf_token';
+    $tokenBytes = defined('CSRF_TOKEN_LENGTH') ? max(32, (int) CSRF_TOKEN_LENGTH) : 32;
+
+    if (empty($_SESSION[$tokenName]) || !is_string($_SESSION[$tokenName]) || strlen($_SESSION[$tokenName]) < 64) {
+        $_SESSION[$tokenName] = bin2hex(random_bytes($tokenBytes));
     }
-    return $_SESSION[CSRF_TOKEN_NAME];
+
+    return $_SESSION[$tokenName];
 }
 
 /**
  * Validate CSRF token
  */
 function validateCSRFToken($token) {
-    if (!isset($_SESSION[CSRF_TOKEN_NAME])) {
+    $tokenName = defined('CSRF_TOKEN_NAME') ? CSRF_TOKEN_NAME : 'csrf_token';
+
+    if (!isset($_SESSION[$tokenName]) || !is_string($token)) {
         return false;
     }
-    return hash_equals($_SESSION[CSRF_TOKEN_NAME], $token);
+
+    return hash_equals((string) $_SESSION[$tokenName], $token);
+}
+
+/**
+ * Rotate CSRF token after privilege changes.
+ */
+function rotateCSRFToken() {
+    $tokenName = defined('CSRF_TOKEN_NAME') ? CSRF_TOKEN_NAME : 'csrf_token';
+    $_SESSION[$tokenName] = bin2hex(random_bytes(32));
+    return $_SESSION[$tokenName];
 }
 
 /**

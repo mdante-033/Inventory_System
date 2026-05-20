@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/includes/session.php';
 
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/includes/account_verification_helper.php';
@@ -70,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user && $errors === []) {
             clearPendingVerificationSession();
             unset($_SESSION['verify_csrf']);
             session_regenerate_id(true);
+            refreshSessionSecurityMetadata();
             $_SESSION['flash_success'] = 'Account verified successfully. You can now sign in.';
             header('Location: login.php');
             exit;

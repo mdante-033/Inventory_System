@@ -4,10 +4,7 @@
  * Handles user login, logout, registration, and password management
  */
 
-// Start session if not started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session.php';
 
 /**
  * Login user
@@ -36,26 +33,21 @@ function login($username, $password, $remember = false) {
             return ['success' => false, 'message' => 'Invalid username or password'];
         }
         
-        // Regenerate session ID
-        session_regenerate_id(true);
-        
-        // Set session variables
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['username'] = $user['username'];
-        $_SESSION['email'] = $user['email'];
-        $_SESSION['full_name'] = $user['full_name'];
-        $_SESSION['role'] = $user['role'];
-        $_SESSION['logged_in'] = true;
-        $_SESSION['login_time'] = time();
-        $_SESSION['last_activity'] = time();
+        createUserSession($user);
         
         // Handle remember me
         if ($remember) {
-            $token = generateRandomString(32);
+            $token = bin2hex(random_bytes(32));
             $expiry = time() + (REMEMBER_ME_DAYS * 86400);
             
             // Store remember token (in production, store hashed version)
-            setcookie('remember_token', $token, $expiry, '/');
+            setcookie('remember_token', $token, [
+                'expires' => $expiry,
+                'path' => '/',
+                'secure' => inventorySessionIsHttps(),
+                'httponly' => true,
+                'samesite' => inventorySessionSameSite(),
+            ]);
             
             // Store token in database (pseudo-code - add to users table)
             // $stmt = $pdo->prepare("UPDATE users SET remember_token = ? WHERE id = ?");
@@ -89,20 +81,17 @@ function logout() {
         
         // Clear remember token
         if (isset($_COOKIE['remember_token'])) {
-            setcookie('remember_token', '', time() - 3600, '/');
+            setcookie('remember_token', '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'secure' => inventorySessionIsHttps(),
+                'httponly' => true,
+                'samesite' => inventorySessionSameSite(),
+            ]);
         }
     }
     
-    // Clear all session variables
-    $_SESSION = [];
-    
-    // Destroy session
-    session_destroy();
-    
-    // Start new session
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
+    destroySession();
     
     return ['success' => true, 'message' => 'Logged out successfully'];
 }
@@ -117,6 +106,10 @@ function register($username, $email, $password, $fullName, $role = 'staff') {
         // Validate inputs
         if (empty($username) || empty($email) || empty($password) || empty($fullName)) {
             return ['success' => false, 'message' => 'All fields are required'];
+        }
+
+        if (strtolower(trim($username)) === strtolower(trim($email))) {
+            return ['success' => false, 'message' => 'Username and email must be different'];
         }
         
         // Check if username exists
@@ -194,6 +187,12 @@ function changePassword($userId, $currentPassword, $newPassword) {
         // Update password
         $stmt = $pdo->prepare("UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?");
         $stmt->execute([$hashedPassword, $userId]);
+
+        if ((int) ($_SESSION['user_id'] ?? 0) === (int) $userId) {
+            session_regenerate_id(true);
+            refreshSessionSecurityMetadata();
+            rotateSessionCsrfToken();
+        }
         
         // Log password change
         logActivity($userId, 'password_changed', "User changed their password");

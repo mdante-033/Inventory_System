@@ -1,7 +1,7 @@
 <?php
 // admin/auth.php
 
-session_start();
+require_once __DIR__ . '/../includes/session.php';
 
 class AdminAuth
 {
@@ -24,10 +24,15 @@ class AdminAuth
             $admin = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($admin && password_verify($password, $admin['password_hash'])) {
+                session_regenerate_id(true);
+                $_SESSION = [];
                 $_SESSION['admin_id'] = $admin['id'];
                 $_SESSION['admin_username'] = $admin['username'];
                 $_SESSION['admin_role'] = $admin['role'];
                 $_SESSION['admin_logged_in'] = true;
+                $_SESSION['login_time'] = time();
+                $_SESSION['admin_csrf_token'] = bin2hex(random_bytes(32));
+                refreshSessionSecurityMetadata();
 
                 $stmt = $this->pdo->prepare("
                     UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?
@@ -51,7 +56,7 @@ class AdminAuth
 
     public function logout()
     {
-        session_destroy();
+        destroySession();
         return true;
     }
 

@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/functions.php';
 
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/includes/account_verification_helper.php';
@@ -131,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors[] = 'This account is suspended. Please contact support.';
                 } else {
                     session_regenerate_id(true);
+                    refreshSessionSecurityMetadata();
                     setPendingVerificationSession($existingUser);
                     $_SESSION['flash_success'] = 'Your account is waiting for verification. Enter the code we sent to your email, or request a new one.';
                     header('Location: verify_code.php');
@@ -180,6 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 unset($_SESSION['register_csrf']);
                 session_regenerate_id(true);
+                refreshSessionSecurityMetadata();
                 clearPendingVerificationSession();
                 $verificationResult = sendAccountVerificationCode($pdo, $newUser, false);
 

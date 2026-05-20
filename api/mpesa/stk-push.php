@@ -3,7 +3,8 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json');
-session_start();
+require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../includes/functions.php';
 
 require_once __DIR__ . '/../../db_connect.php';
 require_once __DIR__ . '/../../classes/Mpesa.php';
@@ -39,6 +40,12 @@ if (empty($input)) {
     if (is_array($decoded)) {
         $input = $decoded;
     }
+}
+
+if (!validateCSRFToken((string) ($input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) {
+    http_response_code(419);
+    echo json_encode(['success' => false, 'message' => 'Your session token is invalid. Refresh the page and try again.']);
+    exit;
 }
 
 $orderId = filter_var($input['order_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

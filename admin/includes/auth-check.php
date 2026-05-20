@@ -4,10 +4,7 @@
  * Ensures user is logged in and has admin privileges
  */
 
-// Start session if not started
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/../../includes/session.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -26,7 +23,7 @@ if (isset($_SESSION['last_activity'])) {
     
     if ($elapsed > $timeout) {
         // Session expired
-        session_destroy();
+        destroySession();
         header('Location: ' . (defined('APP_URL') ? APP_URL : '') . '/login.php?timeout=1');
         exit;
     }
@@ -38,16 +35,17 @@ $_SESSION['last_activity'] = time();
 // Check if user has admin role (optional - can be removed if you want managers to access admin)
 $allowedRoles = ['admin', 'manager'];
 
-if (isset($_SESSION['role']) && !in_array($_SESSION['role'], $allowedRoles)) {
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], $allowedRoles, true)) {
     // User doesn't have permission
-    header('Location: ' . (defined('APP_URL') ? APP_URL : '') . '/dashboard.php?error=unauthorized');
+    header('HTTP/1.1 403 Forbidden');
+    echo 'Access denied';
     exit;
 }
 
 // Additional security check - verify IP address (optional)
-if (isset($_SESSION['ip_address']) && $_SESSION['ip_address'] !== $_SERVER['REMOTE_ADDR']) {
+if (shouldBindSessionToIp() && isset($_SESSION['ip_address']) && !hash_equals((string) $_SESSION['ip_address'], currentSessionIp())) {
     // IP address changed - possible session hijacking
-    session_destroy();
+    destroySession();
     header('Location: ' . (defined('APP_URL') ? APP_URL : '') . '/login.php?error=security');
     exit;
 }

@@ -1,6 +1,7 @@
 <?php
 // checkout.php
-session_start();
+require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/functions.php';
 
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/modules/cart_module.php';
@@ -20,9 +21,12 @@ $paymentModule = new PaymentModule($pdo);
 $cart = $cartModule->getCart($_SESSION['user_id']);
 $message = '';
 $error = '';
+$csrfToken = generateCSRFToken();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (empty($cart['items'])) {
+    if (!validateCSRFToken((string) ($_POST['csrf_token'] ?? ''))) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    } elseif (empty($cart['items'])) {
         $error = 'Your cart is empty.';
     } else {
         $shippingAddress = [
@@ -125,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="card">
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                     <h5 class="mb-3">Shipping Details</h5>
                     <div class="row">
                         <div class="col-md-6 mb-3">

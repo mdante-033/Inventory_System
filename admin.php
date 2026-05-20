@@ -4,8 +4,9 @@
  * Main Dashboard Index File (Modular) - Restyled
  */
 
-session_start();
+require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/admin/includes/auth-check.php';
+require_once __DIR__ . '/includes/functions.php';
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'dashboard';
 
@@ -17,10 +18,45 @@ if (!isset($pdo) || $pdo === null) {
     die("Critical Error: Database connection failed. Please check your PostgreSQL setup.");
 }
 
+try {
+    $currentAdminId = (int) ($_SESSION['user_id'] ?? 0);
+    if ($currentAdminId > 0) {
+        $sessionUserStmt = $pdo->prepare('SELECT username, email, full_name, role, is_active, account_status FROM users WHERE id = ? LIMIT 1');
+        $sessionUserStmt->execute([$currentAdminId]);
+        $sessionUser = $sessionUserStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$sessionUser) {
+            destroySession();
+            header('Location: login.php?error=unauthorized');
+            exit;
+        }
+
+        $sessionUserIsActive = is_bool($sessionUser['is_active'] ?? null)
+            ? (bool) $sessionUser['is_active']
+            : in_array(strtolower(trim((string) ($sessionUser['is_active'] ?? ''))), ['1', 'true', 't', 'yes', 'y'], true);
+
+        if (!in_array($sessionUser['role'] ?? '', ['admin', 'manager'], true)
+            || !$sessionUserIsActive
+            || (($sessionUser['account_status'] ?? 'active') === 'suspended')) {
+            destroySession();
+            header('Location: login.php?error=unauthorized');
+            exit;
+        }
+
+        $_SESSION['username'] = $sessionUser['username'];
+        $_SESSION['email'] = $sessionUser['email'];
+        $_SESSION['full_name'] = $sessionUser['full_name'];
+        $_SESSION['role'] = $sessionUser['role'];
+    }
+} catch (PDOException $e) {
+    error_log('Admin session verification failed: ' . $e->getMessage());
+}
+
 $user_name = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Admin';
 $user_role = $_SESSION['role'] ?? 'admin';
 $canManageInventory = checkAdminPermission('products.edit') || checkAdminPermission('stock.manage');
 $productImageColumnAvailable = productImageColumnExists($pdo);
+$adminCsrfToken = generateCSRFToken();
 
 // Notifications (lightweight summary)
 $notifications = [];
@@ -56,6 +92,12 @@ if (!in_array($page, $allowed_pages)) {
 
 if (isset($_POST['action'])) {
     header('Content-Type: application/json');
+    if (!validateCSRFToken((string) ($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) {
+        http_response_code(419);
+        echo json_encode(['success' => false, 'message' => 'Your session token is invalid. Refresh the page and try again.']);
+        exit;
+    }
+
     $action = $_POST['action'];
     $result = ['success' => false, 'message' => 'Unknown action'];
     try {
@@ -221,6 +263,11 @@ if (isset($_POST['action'])) {
                 $result = ['success' => true, 'message' => 'Stock adjusted successfully'];
                 break;
             case 'add_customer':
+                if (strtolower(trim((string) ($_POST['username'] ?? ''))) === strtolower(trim((string) ($_POST['email'] ?? '')))) {
+                    $result = ['success' => false, 'message' => 'Username and email must be different.'];
+                    break;
+                }
+
                 $stmt = $pdo->prepare("INSERT INTO users (username, password, full_name, email, phone, customer_group, role) VALUES (?, ?, ?, ?, ?, ?, 'customer')");
                 $password = password_hash($_POST['password'] ?? 'password123', PASSWORD_DEFAULT);
                 $stmt->execute([$_POST['username'], $password, $_POST['full_name'], $_POST['email'], $_POST['phone'] ?? '', $_POST['customer_group'] ?? 'regular']);
@@ -392,6 +439,11 @@ if (isset($_POST['action'])) {
                     break;
                 }
 
+                if (strtolower($username) === strtolower($email)) {
+                    $result = ['success' => false, 'message' => 'Username and email must be different.'];
+                    break;
+                }
+
                 if (!in_array($role, $allowedRoles, true)) {
                     $result = ['success' => false, 'message' => 'Please select a valid user role.'];
                     break;
@@ -420,6 +472,11 @@ if (isset($_POST['action'])) {
 
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     $result = ['success' => false, 'message' => 'Please enter a valid email address.'];
+                    break;
+                }
+
+                if (strtolower($username) === strtolower($email)) {
+                    $result = ['success' => false, 'message' => 'Username and email must be different.'];
                     break;
                 }
 
@@ -605,6 +662,37 @@ $page_title = $page_titles[$page] ?? ucfirst($page);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
+    window.ADMIN_CSRF_TOKEN = <?= json_encode($adminCsrfToken) ?>;
+
+    (function () {
+        const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+        if (!nativeFetch) return;
+
+        window.fetch = function (input, init) {
+            const options = Object.assign({}, init || {});
+            const method = String(options.method || 'GET').toUpperCase();
+
+            if (method === 'POST' && window.ADMIN_CSRF_TOKEN) {
+                if (options.body instanceof FormData || options.body instanceof URLSearchParams) {
+                    if (!options.body.has('csrf_token')) {
+                        options.body.append('csrf_token', window.ADMIN_CSRF_TOKEN);
+                    }
+                } else if (typeof options.body === 'string') {
+                    const separator = options.body.length ? '&' : '';
+                    options.body += separator + 'csrf_token=' + encodeURIComponent(window.ADMIN_CSRF_TOKEN);
+                } else if (!options.body) {
+                    options.body = new URLSearchParams({ csrf_token: window.ADMIN_CSRF_TOKEN });
+                }
+
+                options.headers = Object.assign({}, options.headers || {}, {
+                    'X-CSRF-Token': window.ADMIN_CSRF_TOKEN
+                });
+            }
+
+            return nativeFetch(input, options);
+        };
+    })();
+
     // Apply the saved theme before styles paint to reduce flashing.
     (function () {
         const storageKey = 'admin-theme';

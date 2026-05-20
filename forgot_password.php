@@ -6,16 +6,20 @@
  * @package InventorySystem
  */
 
-// Start session to allow future CSRF protection or flash messaging.
-session_start();
+require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/functions.php';
 
 $error = '';
 $success = '';
+$csrfToken = generateCSRFToken();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $identifier = trim($_POST['identifier'] ?? '');
+    $postedCsrfToken = $_POST['csrf_token'] ?? '';
 
-    if ($identifier === '') {
+    if (!validateCSRFToken((string) $postedCsrfToken)) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    } elseif ($identifier === '') {
         $error = 'Please enter your email address or username.';
     } else {
         // We intentionally do not disclose whether the account exists.
@@ -61,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="forgot_password.php" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="form-group">
                     <label for="identifier">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

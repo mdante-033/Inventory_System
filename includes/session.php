@@ -1,55 +1,208 @@
 <?php
 /**
  * Session Management
- * Handles session initialization, security, and management
+ * Handles secure session initialization, validation, and teardown.
  */
 
-// Start session if not started
-if (session_status() === PHP_SESSION_NONE) {
-    // Set session cookie parameters before starting session
-    ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_secure', isset($_SERVER['HTTPS']));
-    ini_set('session.use_strict_mode', 1);
-    ini_set('session.cookie_samesite', 'Strict');
-    
+function inventorySessionIsHttps(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+
+    if (($_SERVER['SERVER_PORT'] ?? null) === '443') {
+        return true;
+    }
+
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    if (in_array('https', array_map('trim', explode(',', $forwardedProto)), true)) {
+        return true;
+    }
+
+    return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on';
+}
+
+function inventorySessionCookieName(): string
+{
+    $configuredName = trim((string) getenv('SESSION_COOKIE_NAME'));
+
+    if ($configuredName !== '') {
+        return preg_replace('/[^A-Za-z0-9_,.-]/', '', $configuredName) ?: 'INVSYSSESSID';
+    }
+
+    return inventorySessionIsHttps() ? '__Secure-INVSYS' : 'INVSYSSESSID';
+}
+
+function inventorySessionSameSite(): string
+{
+    $sameSite = ucfirst(strtolower((string) (getenv('SESSION_SAMESITE') ?: 'Strict')));
+    return in_array($sameSite, ['Lax', 'Strict', 'None'], true) ? $sameSite : 'Strict';
+}
+
+function configureSecureSession(): void
+{
+    static $configured = false;
+
+    if ($configured || session_status() !== PHP_SESSION_NONE || headers_sent()) {
+        return;
+    }
+
+    $secure = inventorySessionIsHttps();
+    $sameSite = inventorySessionSameSite();
+
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_trans_sid', '0');
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_secure', $secure ? '1' : '0');
+    ini_set('session.cookie_samesite', $sameSite);
+    ini_set('session.sid_length', '48');
+    ini_set('session.sid_bits_per_character', '6');
+    ini_set('session.gc_maxlifetime', (string) getSessionAbsoluteTimeout());
+
+    session_name(inventorySessionCookieName());
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => $sameSite,
+    ]);
+
+    $configured = true;
+}
+
+function startSecureSession(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    configureSecureSession();
     session_start();
+}
+
+function getSessionIdleTimeout(): int
+{
+    $configured = (int) (getenv('SESSION_IDLE_TIMEOUT') ?: 0);
+    if ($configured > 0) {
+        return $configured;
+    }
+
+    return defined('SESSION_TIMEOUT') ? (int) SESSION_TIMEOUT : 1800;
+}
+
+function getSessionAbsoluteTimeout(): int
+{
+    $configured = (int) (getenv('SESSION_ABSOLUTE_TIMEOUT') ?: 0);
+    return $configured > 0 ? $configured : 3600;
+}
+
+function getSessionRotationInterval(): int
+{
+    $configured = (int) (getenv('SESSION_ROTATE_INTERVAL') ?: 0);
+    return $configured > 0 ? $configured : 300;
+}
+
+function shouldBindSessionToIp(): bool
+{
+    return filter_var(getenv('SESSION_BIND_IP') ?: false, FILTER_VALIDATE_BOOLEAN);
+}
+
+function currentSessionUserAgent(): string
+{
+    if (function_exists('getUserAgent')) {
+        return getUserAgent();
+    }
+
+    return $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
+}
+
+function currentSessionIp(): string
+{
+    if (function_exists('getUserIP')) {
+        return getUserIP();
+    }
+
+    return $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+}
+
+function currentSessionFingerprint(): string
+{
+    return hash('sha256', currentSessionUserAgent());
+}
+
+function refreshSessionSecurityMetadata(): void
+{
+    $_SESSION['created'] = $_SESSION['created'] ?? time();
+    $_SESSION['last_activity'] = time();
+    $_SESSION['_last_regenerated'] = $_SESSION['_last_regenerated'] ?? time();
+    $_SESSION['user_agent'] = currentSessionUserAgent();
+    $_SESSION['session_fingerprint'] = currentSessionFingerprint();
+    $_SESSION['ip_address'] = currentSessionIp();
+    $_SESSION['initiated'] = true;
+}
+
+function rotateSessionCsrfToken(): void
+{
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    unset($_SESSION['register_csrf'], $_SESSION['verify_csrf'], $_SESSION['admin_csrf_token']);
 }
 
 /**
  * Initialize session with security checks
  */
 function initSession() {
-    // Check for session hijacking
-    if (isset($_SESSION['user_id']) && isset($_SESSION['user_agent'])) {
-        if ($_SESSION['user_agent'] !== getUserAgent()) {
-            // Possible session hijacking - destroy session
-            destroySession();
-            return false;
-        }
+    startSecureSession();
+
+    $now = time();
+
+    if (isset($_SESSION['user_id'], $_SESSION['session_fingerprint'])
+        && !hash_equals((string) $_SESSION['session_fingerprint'], currentSessionFingerprint())) {
+        destroySession();
+        return false;
+    }
+
+    if (isset($_SESSION['user_id'], $_SESSION['user_agent'])
+        && !hash_equals((string) $_SESSION['user_agent'], currentSessionUserAgent())) {
+        destroySession();
+        return false;
+    }
+
+    if (shouldBindSessionToIp()
+        && isset($_SESSION['user_id'], $_SESSION['ip_address'])
+        && !hash_equals((string) $_SESSION['ip_address'], currentSessionIp())) {
+        destroySession();
+        return false;
     }
     
-    // Check for session fixation
     if (!isset($_SESSION['initiated'])) {
         session_regenerate_id(true);
-        $_SESSION['initiated'] = true;
-        $_SESSION['user_agent'] = getUserAgent();
-        $_SESSION['ip_address'] = getUserIP();
+        refreshSessionSecurityMetadata();
     }
     
-    // Check session timeout
     if (isset($_SESSION['last_activity'])) {
-        $timeout = SESSION_TIMEOUT;
-        $elapsed = time() - $_SESSION['last_activity'];
-        
-        if ($elapsed > $timeout) {
+        $elapsed = $now - (int) $_SESSION['last_activity'];
+        if ($elapsed > getSessionIdleTimeout()) {
             destroySession();
             return false;
         }
     }
-    
-    // Update last activity time
-    $_SESSION['last_activity'] = time();
-    
+
+    if (isset($_SESSION['created']) && ($now - (int) $_SESSION['created']) > getSessionAbsoluteTimeout()) {
+        destroySession();
+        return false;
+    }
+
+    if (isset($_SESSION['user_id'], $_SESSION['_last_regenerated'])
+        && ($now - (int) $_SESSION['_last_regenerated']) > getSessionRotationInterval()) {
+        session_regenerate_id(false);
+        $_SESSION['_last_regenerated'] = $now;
+    }
+
+    refreshSessionSecurityMetadata();
+
     return true;
 }
 
@@ -71,13 +224,10 @@ function createUserSession($user) {
     $_SESSION['role'] = $user['role'];
     $_SESSION['logged_in'] = true;
     $_SESSION['login_time'] = time();
-    $_SESSION['last_activity'] = time();
-    $_SESSION['user_agent'] = getUserAgent();
-    $_SESSION['ip_address'] = getUserIP();
-    $_SESSION['initiated'] = true;
+    refreshSessionSecurityMetadata();
     
-    // Generate session token
-    $_SESSION['session_token'] = generateRandomString(32);
+    $_SESSION['session_token'] = bin2hex(random_bytes(32));
+    rotateSessionCsrfToken();
     
     return true;
 }
@@ -85,30 +235,34 @@ function createUserSession($user) {
 /**
  * Destroy session
  */
-function destroySession() {
+function destroySession($startFresh = true) {
     // Clear session data
     $_SESSION = [];
     
     // Delete session cookie
-    if (ini_get('session.use_cookies')) {
+    if (ini_get('session.use_cookies') && !headers_sent()) {
         $params = session_get_cookie_params();
-        setcookie(
-            session_name(),
-            '',
-            time() - 42000,
-            $params['path'],
-            $params['domain'],
-            $params['secure'],
-            $params['httponly']
-        );
+        setcookie(session_name(), '', [
+            'expires' => time() - 42000,
+            'path' => $params['path'] ?: '/',
+            'domain' => $params['domain'] ?? '',
+            'secure' => (bool) ($params['secure'] ?? false),
+            'httponly' => (bool) ($params['httponly'] ?? true),
+            'samesite' => $params['samesite'] ?? inventorySessionSameSite(),
+        ]);
     }
     
     // Destroy session
     session_destroy();
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     
     // Start new session
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
+    if ($startFresh && !headers_sent()) {
+        startSecureSession();
+        session_regenerate_id(true);
+        refreshSessionSecurityMetadata();
     }
 }
 
@@ -246,7 +400,7 @@ function getSessionRemainingTime() {
     }
     
     $elapsed = time() - $_SESSION['last_activity'];
-    return max(0, SESSION_TIMEOUT - $elapsed);
+    return max(0, getSessionIdleTimeout() - $elapsed);
 }
 
 /**
@@ -273,7 +427,7 @@ function checkIPChange() {
         return true;
     }
     
-    return $_SESSION['ip_address'] === getUserIP();
+    return hash_equals((string) $_SESSION['ip_address'], currentSessionIp());
 }
 
 // Initialize session on include

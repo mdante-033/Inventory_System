@@ -6,8 +6,8 @@
  * @package InventorySystem
  */
 
-// Start session at the beginning
-session_start();
+require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/functions.php';
 
 // Include database connection
 require_once __DIR__ . '/db_connect.php';
@@ -42,6 +42,7 @@ $error = '';
 $success = $_SESSION['flash_success'] ?? '';
 $submittedLogin = '';
 unset($_SESSION['flash_success']);
+$csrfToken = generateCSRFToken();
 
 // Process login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -49,13 +50,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Get and sanitize input
     $login = trim($_POST['login'] ?? ($_POST['username'] ?? ''));
     $password = $_POST['password'] ?? '';
+    $postedCsrfToken = $_POST['csrf_token'] ?? '';
     $submittedLogin = $login;
 
     // Log login attempt (do not log passwords)
     Logger::info('Login attempt received', ['login' => $login, 'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
 
     // Validate input
-    if (empty($login) || empty($password)) {
+    if (!validateCSRFToken((string) $postedCsrfToken)) {
+        $error = 'Your session expired. Refresh the page and try again.';
+        Logger::warn('Login blocked by invalid CSRF token', ['login' => $login, 'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
+    } elseif (empty($login) || empty($password)) {
         $error = 'Please enter both your email or username and password.';
     } elseif (!($pdo instanceof PDO)) {
         // Database connection is not available
@@ -86,23 +91,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Logger::warn('Login blocked - account suspended', ['login' => $login, 'user_id' => $user['id']]);
                 } elseif (!isAccountVerified($user['is_verified']) || ($user['account_status'] ?? 'pending') === 'pending') {
                     session_regenerate_id(true);
+                    refreshSessionSecurityMetadata();
+                    rotateCSRFToken();
                     setPendingVerificationSession($user);
                     $_SESSION['flash_success'] = 'Your account is not verified yet. Enter the 6-digit code we sent to your email.';
                     Logger::info('Login requires verification', ['login' => $login, 'user_id' => $user['id']]);
                     header('Location: verify_code.php');
                     exit;
                 } else {
-                    // Regenerate session ID to prevent session fixation
-                    session_regenerate_id(true);
-                    
-                    // Store user data in session
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['email'] = $user['email'];
-                    $_SESSION['full_name'] = $user['full_name'];
-                    $_SESSION['role'] = $user['role'];
-                    $_SESSION['logged_in'] = true;
-                    $_SESSION['login_time'] = time();
+                    createUserSession($user);
                     
                     // Update last login time (optional)
                     $updateStmt = $pdo->prepare('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = :id');
@@ -179,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             
             <form method="POST" action="login.php" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrfToken); ?>">
                 <div class="form-group">
                     <label for="login">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

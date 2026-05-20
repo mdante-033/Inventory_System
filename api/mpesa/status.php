@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json');
-session_start();
+require_once __DIR__ . '/../../includes/session.php';
 
 require_once __DIR__ . '/../../db_connect.php';
 require_once __DIR__ . '/../../includes/mpesa_db_helper.php';

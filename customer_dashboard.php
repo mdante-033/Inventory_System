@@ -1,6 +1,7 @@
 ﻿
 <?php
-session_start();
+require_once __DIR__ . '/includes/session.php';
+require_once __DIR__ . '/includes/functions.php';
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header('Location: login.php');
     exit;
@@ -22,6 +23,13 @@ if (!isset($_SESSION['cart'])) {
 
 $message = '';
 $message_type = 'success';
+$csrfToken = generateCSRFToken();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCSRFToken((string) ($_POST['csrf_token'] ?? ''))) {
+    $message = 'Your session expired. Refresh the page and try again.';
+    $message_type = 'error';
+    $_POST = [];
+}
 
 if (isset($_POST['add_to_cart'])) {
     $product_id = intval($_POST['product_id']);
@@ -979,6 +987,7 @@ $cart_count = array_sum($_SESSION['cart']);
                             </div>
                             <?php if ($product['quantity'] > 0): ?>
                             <form method="POST" class="add-to-cart-form">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="product_id" value="<?= $product['id'] ?>">
                                 <input type="number" name="quantity" value="1" min="1" max="<?= $product['quantity'] ?>" class="qty-input">
                                 <button type="submit" name="add_to_cart" class="btn btn-primary">
@@ -1022,6 +1031,7 @@ $cart_count = array_sum($_SESSION['cart']);
                     <div class="panel-header">
                         <span class="panel-title"><i class="fas fa-shopping-bag"></i> Cart Items</span>
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                             <button type="submit" name="clear_cart" class="btn btn-outline btn-icon" title="Clear cart">
                                 <i class="fas fa-trash-can"></i>
                             </button>
@@ -1042,6 +1052,7 @@ $cart_count = array_sum($_SESSION['cart']);
                                 <div class="cart-item-qty">×<?= $item['cart_quantity'] ?></div>
                                 <div class="cart-item-sub">$<?= number_format($item['subtotal'] ?? 0, 2) ?></div>
                                 <form method="POST">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="product_id" value="<?= $item['id'] ?>">
                                     <button type="submit" name="remove_from_cart" class="btn btn-icon btn-outline" title="Remove">
                                         <i class="fas fa-xmark"></i>
@@ -1072,6 +1083,7 @@ $cart_count = array_sum($_SESSION['cart']);
 
                     <div class="checkout-actions">
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                             <button type="submit" name="checkout" class="btn btn-success btn-full">
                                 <i class="fas fa-check-circle"></i> Place Order
                             </button>
@@ -1080,6 +1092,7 @@ $cart_count = array_sum($_SESSION['cart']);
                         <div class="divider"><span>or pay instantly</span></div>
 
                         <form method="POST" class="mpesa-form">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                             <div class="mpesa-label">
                                 <i class="fas fa-mobile-screen-button"></i>
                                 M-Pesa Payment
