@@ -16,7 +16,7 @@ $pdo = getDBConnection();
 // ── CHANGE THESE THREE VALUES BEFORE UPLOADING ────────────────────────────
 $username = 'admin';
 $email    = 'admin@example.com';
-$password = 'Admin@1234!';          // ← pick a strong password
+$password = 'admindogo@1234!';          // ← pick a strong password
 // ─────────────────────────────────────────────────────────────────────────
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
