@@ -10,6 +10,8 @@
  */
 
 require_once __DIR__ . '/db_connect.php';
+/** @var PDO|null $pdo */
+$pdo = getDBConnection();
 
 // ── CHANGE THESE THREE VALUES BEFORE UPLOADING ────────────────────────────
 $username = 'admin';
@@ -89,7 +91,7 @@ try {
         echo '</div>';
         echo '</div>';
     } else {
-        echo '<h2 style="color:orange"> Insert ran but user not found in DB. Check your DB connection.</h2>';
+        echo '<h2 style="color:orange">⚠️ Insert ran but user not found in DB. Check your DB connection.</h2>';
     }
 
 } catch (PDOException $e) {
@@ -102,3 +104,4 @@ try {
     echo '• users table has constraint violation</p>';
     echo '</div>';
 }
+
