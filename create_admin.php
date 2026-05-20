@@ -1,20 +1,18 @@
 <?php
 /**
- * create_admin.php – Creates/resets the admin user.
+ * create_admin.php — Creates or resets the admin user.
  * RUN ONCE, THEN DELETE THIS FILE IMMEDIATELY.
  */
 
 require_once __DIR__ . '/db_connect.php';
 
-// ── SET YOUR OWN CREDENTIALS HERE ──
-$adminUser     = 'admin';                 // username for login
+// ── SET YOUR CREDENTIALS HERE ──
+$adminUser     = 'admin';                 // the username you’ll use to log in
 $adminEmail    = 'admin@example.com';     // any email
 $adminPassword = 'YourStrongPassword123'; // choose a strong password
 
-// Hash the password securely
 $hash = password_hash($adminPassword, PASSWORD_DEFAULT);
 
-// Insert or update the admin user
 $sql = "
     INSERT INTO users (username, email, password, full_name, role, is_active, is_verified, account_status)
     VALUES (:u, :e, :p, 'Administrator', 'admin', true, true, 'active')
