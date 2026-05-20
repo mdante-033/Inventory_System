@@ -18,7 +18,7 @@ $password = 'Admin@1234!';          // ← pick a strong password
 // ─────────────────────────────────────────────────────────────────────────
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
-    die('<h2 style="color:red">❌ Database connection failed. Check your DATABASE_URL environment variable on Render.</h2>');
+    die('<h2 style="color:red"> Database connection failed. Check your DATABASE_URL environment variable on Render.</h2>');
 }
 
 $hash = password_hash($password, PASSWORD_DEFAULT);
