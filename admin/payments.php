@@ -9,7 +9,7 @@ require_once '../modules/payment_module.php';
 
 $payments = adminFetchPayments($pdo);
 $integrityReport = (new PaymentModule($pdo))->getIntegrityReport(10);
-$csrfToken = generateCSRFToken();
+$csrfToken = $adminAuth->getCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">

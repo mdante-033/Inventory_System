@@ -12,6 +12,7 @@ if (!file_exists($baseDir . '/db_connect.php')) {
 }
 
 require_once $baseDir . '/db_connect.php';
+/** @var PDO|null $pdo */
 require_once $baseDir . '/includes/account_verification_helper.php';
 require_once $baseDir . '/includes/logger.php';
 

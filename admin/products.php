@@ -13,7 +13,7 @@ $categoryIds = $pdo->query("
     WHERE category_id IS NOT NULL
     ORDER BY category_id ASC
 ")->fetchAll(PDO::FETCH_COLUMN);
-$csrfToken = generateCSRFToken();
+$csrfToken = $adminAuth->getCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">

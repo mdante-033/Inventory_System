@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * Helper Functions
  * Global helper functions for the Inventory System
@@ -10,7 +10,7 @@ require_once __DIR__ . '/session.php';
 /**
  * Redirect to a specific URL
  */
-function redirect($url) {
+function redirect(string $url): void {
     header("Location: $url");
     exit;
 }
@@ -27,6 +27,9 @@ function currentUrl() {
 
 /**
  * Sanitize input data
+ *
+ * @param mixed $data
+ * @return mixed
  */
 function sanitize($data) {
     if (is_array($data)) {
@@ -50,6 +53,9 @@ if (!function_exists('e')) {
 
 /**
  * Sanitize for database input
+ *
+ * @param mixed $data
+ * @return mixed
  */
 function sanitizeDb($data) {
     if (is_array($data)) {
@@ -61,7 +67,7 @@ function sanitizeDb($data) {
 /**
  * Generate random string
  */
-function generateRandomString($length = 10) {
+function generateRandomString(int $length = 10): string {
     $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     $charactersLength = strlen($characters);
     $randomString = '';
@@ -74,7 +80,7 @@ function generateRandomString($length = 10) {
 /**
  * Generate UUID
  */
-function generateUUID() {
+function generateUUID(): string {
     return sprintf(
         '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff),
@@ -91,7 +97,7 @@ function generateUUID() {
 /**
  * Format date
  */
-function formatDate($date, $format = 'M d, Y') {
+function formatDate(string $date = null, string $format = 'M d, Y'): string {
     if (empty($date)) return '';
     $timestamp = strtotime($date);
     return date($format, $timestamp);
@@ -100,7 +106,7 @@ function formatDate($date, $format = 'M d, Y') {
 /**
  * Format datetime
  */
-function formatDateTime($datetime, $format = 'M d, Y H:i:s') {
+function formatDateTime(string $datetime = null, string $format = 'M d, Y H:i:s'): string {
     if (empty($datetime)) return '';
     $timestamp = strtotime($datetime);
     return date($format, $timestamp);
@@ -109,7 +115,7 @@ function formatDateTime($datetime, $format = 'M d, Y H:i:s') {
 /**
  * Format currency
  */
-function formatCurrency($amount, $currency = 'KES') {
+function formatCurrency(float|int $amount, string $currency = 'KES'): string {
     $symbol = $currency === 'KES' ? 'KSh ' : '$';
     return $symbol . number_format($amount, 2);
 }
@@ -117,7 +123,7 @@ function formatCurrency($amount, $currency = 'KES') {
 /**
  * Format phone number (Kenyan format)
  */
-function formatPhoneNumber($phone) {
+function formatPhoneNumber(string $phone): string {
     // Remove any non-digit characters
     $phone = preg_replace('/[^0-9]/', '', $phone);
     
@@ -137,14 +143,14 @@ function formatPhoneNumber($phone) {
 /**
  * Validate email
  */
-function isValidEmail($email) {
+function isValidEmail(string $email): bool {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
 /**
  * Validate phone number (Kenyan)
  */
-function isValidKenyanPhone($phone) {
+function isValidKenyanPhone(string $phone): bool {
     $phone = preg_replace('/[^0-9]/', '', $phone);
     
     // Check if it's a valid Kenyan phone number
@@ -189,7 +195,7 @@ function isAjax() {
 /**
  * Return JSON response
  */
-function jsonResponse($data, $statusCode = 200) {
+function jsonResponse($data, int $statusCode = 200): void {
     http_response_code($statusCode);
     header('Content-Type: application/json');
     echo json_encode($data);
@@ -199,7 +205,7 @@ function jsonResponse($data, $statusCode = 200) {
 /**
  * Return success JSON response
  */
-function jsonSuccess($message, $data = [], $statusCode = 200) {
+function jsonSuccess(string $message, array $data = [], int $statusCode = 200): void {
     jsonResponse([
         'success' => true,
         'message' => $message,
@@ -210,7 +216,7 @@ function jsonSuccess($message, $data = [], $statusCode = 200) {
 /**
  * Return error JSON response
  */
-function jsonError($message, $statusCode = 400) {
+function jsonError(string $message, int $statusCode = 400): void {
     jsonResponse([
         'success' => false,
         'message' => $message
@@ -220,14 +226,14 @@ function jsonError($message, $statusCode = 400) {
 /**
  * Flash message
  */
-function setFlashMessage($type, $message) {
+function setFlashMessage(string $type, string $message): void {
     $_SESSION['flash'][$type] = $message;
 }
 
 /**
  * Get flash message
  */
-function getFlashMessage($type) {
+function getFlashMessage(string $type): ?string {
     if (isset($_SESSION['flash'][$type])) {
         $message = $_SESSION['flash'][$type];
         unset($_SESSION['flash'][$type]);
@@ -265,7 +271,7 @@ function generateCSRFToken() {
 /**
  * Validate CSRF token
  */
-function validateCSRFToken($token) {
+function validateCSRFToken(string $token): bool {
     $tokenName = defined('CSRF_TOKEN_NAME') ? CSRF_TOKEN_NAME : 'csrf_token';
 
     if (!isset($_SESSION[$tokenName]) || !is_string($token)) {
@@ -287,7 +293,7 @@ function rotateCSRFToken() {
 /**
  * Get Gravatar image
  */
-function getGravatar($email, $size = 80) {
+function getGravatar(string $email, int $size = 80): string {
     $hash = md5(strtolower(trim($email)));
     return "https://www.gravatar.com/avatar/$hash?s=$size&d=mp";
 }
@@ -295,7 +301,7 @@ function getGravatar($email, $size = 80) {
 /**
  * Truncate string
  */
-function truncate($text, $length = 100, $suffix = '...') {
+function truncate(string $text, int $length = 100, string $suffix = '...'): string {
     if (strlen($text) <= $length) {
         return $text;
     }
@@ -305,7 +311,7 @@ function truncate($text, $length = 100, $suffix = '...') {
 /**
  * Calculate percentage
  */
-function calculatePercentage($value, $total) {
+function calculatePercentage(float|int $value, float|int $total): float {
     if ($total == 0) return 0;
     return round(($value / $total) * 100, 2);
 }
@@ -313,7 +319,7 @@ function calculatePercentage($value, $total) {
 /**
  * Get stock status
  */
-function getStockStatus($quantity, $reorderLevel) {
+function getStockStatus(float|int $quantity, float|int $reorderLevel): array {
     if ($quantity == 0) {
         return ['status' => 'out_of_stock', 'label' => 'Out of Stock', 'class' => 'danger'];
     } elseif ($quantity <= $reorderLevel) {
@@ -328,7 +334,7 @@ function getStockStatus($quantity, $reorderLevel) {
 /**
  * Log activity
  */
-function logActivity($userId, $action, $description) {
+function logActivity($userId, string $action, string $description): void {
     // This would typically write to a log file or database
     $logEntry = date('Y-m-d H:i:s') . " | User: $userId | Action: $action | Description: $description" . PHP_EOL;
     $logFile = LOG_PATH . 'activity.log';
@@ -341,7 +347,7 @@ function logActivity($userId, $action, $description) {
 /**
  * Log error
  */
-function logError($message, $context = []) {
+function logError(string $message, array $context = []): void {
     $logEntry = date('Y-m-d H:i:s') . " | Error: $message | Context: " . json_encode($context) . PHP_EOL;
     $logFile = LOG_PATH . 'error.log';
     
@@ -353,7 +359,7 @@ function logError($message, $context = []) {
 /**
  * Paginate array
  */
-function paginate($items, $page = 1, $perPage = ITEMS_PER_PAGE) {
+function paginate(array $items, int $page = 1, int $perPage = ITEMS_PER_PAGE): array {
     $offset = ($page - 1) * $perPage;
     $total = count($items);
     $totalPages = ceil($total / $perPage);
@@ -373,14 +379,14 @@ function paginate($items, $page = 1, $perPage = ITEMS_PER_PAGE) {
 /**
  * Get file extension
  */
-function getFileExtension($filename) {
+function getFileExtension(string $filename): string {
     return strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 }
 
 /**
  * Validate file upload
  */
-function validateFileUpload($file, $allowedTypes = ALLOWED_IMAGE_TYPES, $maxSize = MAX_UPLOAD_SIZE) {
+function validateFileUpload(array $file, array $allowedTypes = ALLOWED_IMAGE_TYPES, int $maxSize = MAX_UPLOAD_SIZE): array {
     $errors = [];
     
     if ($file['error'] !== UPLOAD_ERR_OK) {
@@ -406,7 +412,7 @@ function validateFileUpload($file, $allowedTypes = ALLOWED_IMAGE_TYPES, $maxSize
 /**
  * Upload file
  */
-function uploadFile($file, $destination, $prefix = '') {
+function uploadFile(array $file, string $destination, string $prefix = ''): array {
     $extension = getFileExtension($file['name']);
     $filename = $prefix . generateRandomString(16) . '.' . $extension;
     $targetPath = $destination . $filename;
@@ -421,7 +427,7 @@ function uploadFile($file, $destination, $prefix = '') {
 /**
  * Get time ago
  */
-function timeAgo($datetime) {
+function timeAgo(string $datetime): string {
     $timestamp = strtotime($datetime);
     $diff = time() - $timestamp;
     
@@ -465,7 +471,7 @@ function getCurrentUserRole() {
 /**
  * Check if user has role
  */
-function hasRole($role) {
+function hasRole(string $role): bool {
     return getCurrentUserRole() === $role;
 }
 
@@ -491,7 +497,7 @@ function isManager() {
 /**
  * Get total active products count
  */
-function getTotalProducts($pdo) {
+function getTotalProducts(PDO $pdo): int {
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM products WHERE is_active = true");
     return $stmt->fetch()['count'] ?? 0;
 }
@@ -499,7 +505,7 @@ function getTotalProducts($pdo) {
 /**
  * Get low stock products count
  */
-function getLowStockCount($pdo) {
+function getLowStockCount(PDO $pdo): int {
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM products WHERE quantity <= reorder_level AND is_active = true");
     return $stmt->fetch()['count'] ?? 0;
 }
@@ -507,7 +513,7 @@ function getLowStockCount($pdo) {
 /**
  * Get today's orders count
  */
-function getTodayOrders($pdo) {
+function getTodayOrders(PDO $pdo): int {
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM orders WHERE DATE(order_date) = CURRENT_DATE");
     return $stmt->fetch()['count'] ?? 0;
 }
@@ -515,7 +521,7 @@ function getTodayOrders($pdo) {
 /**
  * Get total revenue
  */
-function getTotalRevenue($pdo) {
+function getTotalRevenue(PDO $pdo): float {
     $stmt = $pdo->query("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE payment_status = 'paid'");
     return $stmt->fetch()['total'] ?? 0;
 }
@@ -523,7 +529,7 @@ function getTotalRevenue($pdo) {
 /**
  * Get recent orders
  */
-function getRecentOrders($pdo, $limit = 10) {
+function getRecentOrders(PDO $pdo, int $limit = 10): array {
     $stmt = $pdo->prepare("
         SELECT o.*, u.full_name as customer_name 
         FROM orders o 
@@ -538,7 +544,7 @@ function getRecentOrders($pdo, $limit = 10) {
 /**
  * Get top selling products
  */
-function getTopProducts($pdo, $limit = 5) {
+function getTopProducts(PDO $pdo, int $limit = 5): array {
     $stmt = $pdo->prepare("
         SELECT p.*, COALESCE(SUM(oi.quantity), 0) as total_sold, COALESCE(SUM(oi.subtotal), 0) as revenue
         FROM products p
@@ -555,7 +561,7 @@ function getTopProducts($pdo, $limit = 5) {
 /**
  * Get sales chart data
  */
-function getSalesChartData($pdo, $days = 7) {
+function getSalesChartData(PDO $pdo, int $days = 7): array {
     $data = [];
     $labels = [];
     for ($i = $days - 1; $i >= 0; $i--) {
@@ -571,7 +577,7 @@ function getSalesChartData($pdo, $days = 7) {
 /**
  * Format status badge
  */
-function formatStatus($status, $type = 'badge') {
+function formatStatus(string $status, string $type = 'badge'): string {
     $statuses = [
         'active' => ['class' => 'success', 'icon' => 'check-circle'],
         'inactive' => ['class' => 'secondary', 'icon' => 'times-circle'],
@@ -600,7 +606,7 @@ function formatStatus($status, $type = 'badge') {
 /**
  * Get order statistics
  */
-function getOrderStats($pdo) {
+function getOrderStats(PDO $pdo): array {
     $stats = [
         'pending' => 0,
         'processing' => 0,
@@ -627,7 +633,7 @@ function getOrderStats($pdo) {
 /**
  * Get all categories
  */
-function getCategories($pdo) {
+function getCategories(PDO $pdo): array {
     $stmt = $pdo->query("SELECT * FROM categories WHERE is_active = true ORDER BY name");
     return $stmt->fetchAll();
 }
@@ -635,7 +641,7 @@ function getCategories($pdo) {
 /**
  * Get all suppliers
  */
-function getSuppliers($pdo) {
+function getSuppliers(PDO $pdo): array {
     $stmt = $pdo->query("SELECT * FROM suppliers WHERE is_active = true ORDER BY company_name");
     return $stmt->fetchAll();
 }
@@ -643,7 +649,7 @@ function getSuppliers($pdo) {
 /**
  * Get all customers
  */
-function getCustomers($pdo) {
+function getCustomers(PDO $pdo): array {
     $stmt = $pdo->query("SELECT * FROM users WHERE role = 'customer' AND is_active = true ORDER BY full_name");
     return $stmt->fetchAll();
 }
@@ -651,7 +657,7 @@ function getCustomers($pdo) {
 /**
  * Get low stock products
  */
-function getLowStockProducts($pdo, $limit = 10) {
+function getLowStockProducts(PDO $pdo, int $limit = 10): array {
     $stmt = $pdo->prepare("
         SELECT p.*, c.name as category_name
         FROM products p
@@ -667,7 +673,7 @@ function getLowStockProducts($pdo, $limit = 10) {
 /**
  * Generate pagination HTML
  */
-function generatePagination($currentPage, $totalPages, $baseUrl) {
+function generatePagination(int $currentPage, int $totalPages, string $baseUrl): string {
     $html = '<div class="pagination">';
     
     // Previous button
@@ -706,3 +712,4 @@ function generatePagination($currentPage, $totalPages, $baseUrl) {
     $html .= '</div>';
     return $html;
 }
+

@@ -222,6 +222,9 @@ function createUserSession($user) {
     $_SESSION['email'] = $user['email'];
     $_SESSION['full_name'] = $user['full_name'];
     $_SESSION['role'] = $user['role'];
+    $_SESSION['user_email'] = $user['email'];
+    $_SESSION['user_name'] = $user['full_name'];
+    $_SESSION['user_role'] = $user['role'];
     $_SESSION['logged_in'] = true;
     $_SESSION['login_time'] = time();
     refreshSessionSecurityMetadata();

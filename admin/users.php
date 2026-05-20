@@ -7,7 +7,7 @@ require_once '../includes/functions.php';
 require_once 'includes/action_helpers.php';
 
 $customers = adminFetchCustomers($pdo);
-$csrfToken = generateCSRFToken();
+$csrfToken = $adminAuth->getCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">

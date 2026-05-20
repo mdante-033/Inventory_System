@@ -10,7 +10,7 @@ require_once '../modules/payment_module.php';
 
 $orderModule = new OrderModule($pdo);
 $paymentModule = new PaymentModule($pdo);
-$csrfToken = generateCSRFToken();
+$csrfToken = $adminAuth->getCsrfToken();
 $message = '';
 $error = '';
 
@@ -22,7 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), 
     $status = $_POST['status'] ?? 'pending';
     $paymentStatus = $_POST['payment_status'] ?? 'pending';
 
-    if ($orderId <= 0) {
+    if (!$adminAuth->validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
+        $error = 'Your session token is invalid. Refresh the page and try again.';
+    } elseif ($orderId <= 0) {
         $error = 'Invalid order selected.';
     } elseif (!in_array($status, $validOrderStatuses, true) || !in_array($paymentStatus, $validPaymentStatuses, true)) {
         $error = 'Invalid order status provided.';
@@ -395,6 +397,7 @@ if ($selectedOrderId > 0) {
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="action" value="update">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="order_id" id="modal_order_id">
                         <div class="mb-3">
                             <label class="form-label">Order Status</label>

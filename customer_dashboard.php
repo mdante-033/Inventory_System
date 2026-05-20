@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/includes/functions.php';
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -294,13 +294,13 @@ $cart_count = array_sum($_SESSION['cart']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LuxeStore — My Dashboard</title>
+    <title>LuxeStore â€” My Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        DESIGN TOKENS
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     :root {
         --ink:        #0e0e12;
         --ink-2:      #16161c;
@@ -353,9 +353,9 @@ $cart_count = array_sum($_SESSION['cart']);
         --header-h: 72px;
     }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        RESET & BASE
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
@@ -392,9 +392,9 @@ $cart_count = array_sum($_SESSION['cart']);
     a { color: inherit; text-decoration: none; }
     button { font-family: var(--font-body); cursor: pointer; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        HEADER
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .header {
         position: fixed; top: 0; left: 0; right: 0; z-index: 200;
         height: var(--header-h);
@@ -482,18 +482,18 @@ $cart_count = array_sum($_SESSION['cart']);
     .logout-btn:hover { background: var(--danger-bg); border-color: var(--rose); color: var(--rose); }
     .logout-btn i { font-size: 13px; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        MAIN LAYOUT
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .main-content {
         max-width: 1440px; margin: 0 auto;
         padding: calc(var(--header-h) + 32px) 32px 60px;
         position: relative; z-index: 1;
     }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        MESSAGE TOAST
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .message {
         display: flex; align-items: center; gap: 12px;
         padding: 14px 20px; border-radius: var(--r);
@@ -508,9 +508,9 @@ $cart_count = array_sum($_SESSION['cart']);
     .message.error::before { content: '\f071'; }
     @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        TAB NAV
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .tabs {
         display: flex; gap: 4px; margin-bottom: 32px;
         border-bottom: 1px solid var(--border); padding-bottom: 0;
@@ -533,16 +533,16 @@ $cart_count = array_sum($_SESSION['cart']);
     }
     .tab-btn.active .tab-count { background: var(--gold); color: var(--ink); }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        TAB CONTENT
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .tab-content { display: none; animation: fadeUp .3s ease; }
     .tab-content.active { display: block; }
     @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        SECTION HEADER
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
     .section-title {
         font-family: var(--font-heading); font-size: 2rem;
@@ -551,9 +551,9 @@ $cart_count = array_sum($_SESSION['cart']);
     .section-title em { font-style: italic; color: var(--gold); }
     .section-sub { font-size: .82rem; color: var(--text-3); margin-top: 4px; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        SEARCH
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .search-wrap {
         display: flex; align-items: center; gap: 10px;
         background: var(--ink-3); border: 1px solid var(--border);
@@ -569,9 +569,9 @@ $cart_count = array_sum($_SESSION['cart']);
     }
     .search-input::placeholder { color: var(--text-3); }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        PRODUCTS GRID
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .products-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
@@ -661,9 +661,9 @@ $cart_count = array_sum($_SESSION['cart']);
         border-top: 1px solid var(--border);
     }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        INPUTS
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .qty-input {
         width: 72px; padding: 9px 10px; text-align: center;
         background: var(--ink-3); border: 1px solid var(--border); border-radius: var(--r);
@@ -681,9 +681,9 @@ $cart_count = array_sum($_SESSION['cart']);
     .payment-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-pale); }
     .payment-help { font-size: .76rem; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        BUTTONS
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .btn {
         display: inline-flex; align-items: center; gap: 7px;
         padding: 9px 18px; border-radius: var(--r); border: none;
@@ -714,9 +714,9 @@ $cart_count = array_sum($_SESSION['cart']);
     .btn-full { width: 100%; justify-content: center; padding: 13px; font-size: .9rem; }
     .btn-icon { padding: 8px; width: 34px; height: 34px; border-radius: 8px; justify-content: center; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        CART
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .cart-layout { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
     @media (max-width: 1000px) { .cart-layout { grid-template-columns: 1fr; } }
 
@@ -802,9 +802,9 @@ $cart_count = array_sum($_SESSION['cart']);
     }
     .mpesa-label i { color: #00c853; font-size: 14px; }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        ORDERS
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .orders-list { display: flex; flex-direction: column; gap: 14px; }
 
     .order-card {
@@ -819,7 +819,6 @@ $cart_count = array_sum($_SESSION['cart']);
         padding: 16px 24px; background: var(--ink-3); border-bottom: 1px solid var(--border);
     }
 
-    .order-id-block { }
     .order-id {
         font-size: .88rem; font-weight: 700; color: var(--text);
         display: flex; align-items: center; gap: 6px;
@@ -871,9 +870,9 @@ $cart_count = array_sum($_SESSION['cart']);
     .empty-state p { color: var(--text-3); font-size: .9rem; max-width: 320px; line-height: 1.6; }
     .empty-state h3 { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 300; color: var(--text-2); }
 
-    /* ═══════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        RESPONSIVE
-    ═══════════════════════════════════════ */
+    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     @media (max-width: 768px) {
         .header-inner { padding: 0 16px; }
         .main-content { padding: calc(var(--header-h) + 20px) 16px 40px; }
@@ -948,7 +947,7 @@ $cart_count = array_sum($_SESSION['cart']);
             </button>
         </div>
 
-        <!-- ─── PRODUCTS TAB ─── -->
+        <!-- â”€â”€â”€ PRODUCTS TAB â”€â”€â”€ -->
         <div id="products" class="tab-content active">
             <div class="section-head">
                 <div>
@@ -957,7 +956,7 @@ $cart_count = array_sum($_SESSION['cart']);
                 </div>
                 <div class="search-wrap">
                     <i class="fas fa-search"></i>
-                    <input type="text" class="search-input" placeholder="Search products…" id="productSearch" oninput="filterProducts()">
+                    <input type="text" class="search-input" placeholder="Search productsâ€¦" id="productSearch" oninput="filterProducts()">
                 </div>
             </div>
 
@@ -1015,7 +1014,7 @@ $cart_count = array_sum($_SESSION['cart']);
             </div>
         </div>
 
-        <!-- ─── CART TAB ─── -->
+        <!-- â”€â”€â”€ CART TAB â”€â”€â”€ -->
         <div id="cart" class="tab-content">
             <div class="section-head">
                 <div>
@@ -1049,7 +1048,7 @@ $cart_count = array_sum($_SESSION['cart']);
                                     <div class="cart-item-name"><?= htmlspecialchars($item['name']) ?></div>
                                     <div class="cart-item-unit">$<?= number_format($item_price, 2) ?> each</div>
                                 </div>
-                                <div class="cart-item-qty">×<?= $item['cart_quantity'] ?></div>
+                                <div class="cart-item-qty">Ã—<?= $item['cart_quantity'] ?></div>
                                 <div class="cart-item-sub">$<?= number_format($item['subtotal'] ?? 0, 2) ?></div>
                                 <form method="POST">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
@@ -1071,7 +1070,7 @@ $cart_count = array_sum($_SESSION['cart']);
                     <div class="order-summary">
                         <?php foreach ($cart_items as $item): ?>
                         <div class="summary-row">
-                            <span><?= htmlspecialchars($item['name']) ?> ×<?= $item['cart_quantity'] ?></span>
+                            <span><?= htmlspecialchars($item['name']) ?> Ã—<?= $item['cart_quantity'] ?></span>
                             <span>$<?= number_format($item['subtotal'] ?? 0, 2) ?></span>
                         </div>
                         <?php endforeach; ?>
@@ -1126,7 +1125,7 @@ $cart_count = array_sum($_SESSION['cart']);
             <?php endif; ?>
         </div>
 
-        <!-- ─── ORDERS TAB ─── -->
+        <!-- â”€â”€â”€ ORDERS TAB â”€â”€â”€ -->
         <div id="orders" class="tab-content">
             <div class="section-head">
                 <div>
@@ -1184,7 +1183,7 @@ $cart_count = array_sum($_SESSION['cart']);
     </main>
 
     <script>
-        // ── Tab switching
+        // â”€â”€ Tab switching
         function showTab(tabId, event) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -1199,7 +1198,7 @@ $cart_count = array_sum($_SESSION['cart']);
             });
         }
 
-        // ── Product search
+        // â”€â”€ Product search
         function filterProducts() {
             const q = document.getElementById('productSearch').value.toLowerCase();
             document.querySelectorAll('.product-card').forEach(card => {
@@ -1207,10 +1206,11 @@ $cart_count = array_sum($_SESSION['cart']);
             });
         }
 
-        // ── Header shadow on scroll
+        // â”€â”€ Header shadow on scroll
         window.addEventListener('scroll', () => {
             document.getElementById('hdr').classList.toggle('scrolled', scrollY > 10);
         }, { passive: true });
     </script>
 </body>
 </html>
+

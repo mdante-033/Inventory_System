@@ -12,6 +12,7 @@ if (!file_exists($baseDir . '/db_connect.php')) {
 }
 
 require_once $baseDir . '/db_connect.php';
+/** @var PDO|null $pdo */
 require_once $baseDir . '/includes/account_verification_helper.php';
 
 function registrationRedirectPath(string $role): string
@@ -37,7 +38,7 @@ $input = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrfToken = $_POST['csrf_token'] ?? '';
+    $submittedCsrfToken = $_POST['csrf_token'] ?? '';
     $input['username'] = trim($_POST['username'] ?? '');
     $input['email'] = trim($_POST['email'] ?? '');
     $input['full_name'] = trim($_POST['full_name'] ?? '');
@@ -45,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $passwordConfirm = $_POST['password_confirm'] ?? ($_POST['confirm_password'] ?? '');
 
-    if (!validateCSRFToken((string) $csrfToken)) {
+    if (!validateCSRFToken((string) $submittedCsrfToken)) {
         $errors[] = 'Your session expired. Refresh the page and try again.';
     }
 
@@ -155,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 $newUser = $insert->fetch(PDO::FETCH_ASSOC);
-                unset($_SESSION['register_csrf']);
+                rotateCSRFToken();
                 session_regenerate_id(true);
                 refreshSessionSecurityMetadata();
                 clearPendingVerificationSession();

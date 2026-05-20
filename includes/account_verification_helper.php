@@ -111,11 +111,8 @@ if (!function_exists('getDashboardForRole')) {
     function getDashboardForRole(string $role): string
     {
         return match (strtolower(trim($role))) {
-            'admin'    => 'admin_dashboard.php',
-            'manager'  => 'manager_dashboard.php',
-            'staff'    => 'staff_dashboard.php',
-            'supplier' => 'supplier_dashboard.php',
-            default    => 'customer_dashboard.php',
+            'admin', 'manager' => 'admin.php',
+            default => 'customer_dashboard.php',
         };
     }
 }

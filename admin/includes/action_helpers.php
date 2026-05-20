@@ -22,8 +22,14 @@ function adminLogAction($action, array $context = []): void
 
 function adminRequireCsrf(): void
 {
+    global $adminAuth;
+
     $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-    if (!validateCSRFToken((string)$token)) {
+    $isValidAdminToken = isset($adminAuth)
+        && method_exists($adminAuth, 'validateCsrfToken')
+        && $adminAuth->validateCsrfToken((string) $token);
+
+    if (!$isValidAdminToken) {
         jsonError('Your session token is invalid. Refresh the page and try again.', 419);
     }
 }
