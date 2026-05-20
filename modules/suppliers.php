@@ -133,7 +133,18 @@ try {
                         </td>
                         <td>
                             <div class="action-icons">
-                                <button class="action-icon" title="Edit" onclick="editSupplier(<?php echo (int)$supplier['id']; ?>, <?php echo json_encode($supplier['company_name']); ?>, <?php echo json_encode($supplier['contact_person'] ?? ''); ?>, <?php echo json_encode($supplier['email'] ?? ''); ?>, <?php echo json_encode($supplier['phone'] ?? ''); ?>, <?php echo json_encode($supplier['address'] ?? ''); ?>, <?php echo json_encode($supplier['city'] ?? ''); ?>)">
+                                <button
+                                    class="action-icon"
+                                    title="Edit"
+                                    data-id="<?php echo (int) $supplier['id']; ?>"
+                                    data-company="<?php echo htmlspecialchars($supplier['company_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-contact="<?php echo htmlspecialchars($supplier['contact_person'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-email="<?php echo htmlspecialchars($supplier['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-phone="<?php echo htmlspecialchars($supplier['phone'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-address="<?php echo htmlspecialchars($supplier['address'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    data-city="<?php echo htmlspecialchars($supplier['city'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    onclick="editSupplier(this)"
+                                >
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 <button class="action-icon" title="View Products" onclick="viewSupplierProducts(<?php echo $supplier['id']; ?>)">
@@ -239,15 +250,17 @@ function resetSupplierForm() {
 }
 
 // Edit supplier
-function editSupplier(id, company, contact, email, phone, address, city) {
+function editSupplier(button) {
+    const data = button.dataset;
+
     document.getElementById('supplierModalTitle').textContent = 'Edit Supplier';
-    document.getElementById('supplierId').value = id;
-    document.getElementById('supplierCompany').value = company;
-    document.getElementById('supplierContact').value = contact;
-    document.getElementById('supplierEmail').value = email;
-    document.getElementById('supplierPhone').value = phone;
-    document.getElementById('supplierAddress').value = address;
-    document.getElementById('supplierCity').value = city;
+    document.getElementById('supplierId').value = data.id || '';
+    document.getElementById('supplierCompany').value = data.company || '';
+    document.getElementById('supplierContact').value = data.contact || '';
+    document.getElementById('supplierEmail').value = data.email || '';
+    document.getElementById('supplierPhone').value = data.phone || '';
+    document.getElementById('supplierAddress').value = data.address || '';
+    document.getElementById('supplierCity').value = data.city || '';
     showModal('supplierModal');
 }
 
@@ -272,6 +285,9 @@ function saveSupplier(e) {
         } else {
             showNotification(result.message, 'error');
         }
+    })
+    .catch(() => {
+        showNotification('Unable to save supplier right now. Please try again.', 'error');
     });
 }
 

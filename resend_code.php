@@ -1,5 +1,11 @@
 <?php
+/**
+ * POST handler for the "Resend Code" button on verify_code.php.
+ */
 require_once __DIR__ . '/includes/session.php';
+/**
+ * resend_code.php  –  POST handler for "Resend Code" button on verify_code.php
+ */
 
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/includes/account_verification_helper.php';
@@ -11,13 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $csrfToken = $_POST['csrf_token'] ?? '';
 if (!hash_equals($_SESSION['verify_csrf'] ?? '', $csrfToken)) {
-    $_SESSION['flash_error'] = 'Your session expired. Refresh the verification page and try again.';
+    $_SESSION['flash_error'] = 'Session expired. Refresh the page and try again.';
     header('Location: verify_code.php');
     exit;
 }
 
-if (!($pdo instanceof PDO)) {
-    $_SESSION['flash_error'] = $db_connection_error ?: 'Database connection is unavailable right now.';
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    $_SESSION['flash_error'] = isset($db_connection_error) ? $db_connection_error
+                             : 'Database connection is unavailable right now.';
     header('Location: verify_code.php');
     exit;
 }
@@ -39,7 +46,9 @@ if (!$user) {
     exit;
 }
 
+// Force a fresh code on every resend
 $result = sendAccountVerificationCode($pdo, $user, true);
+
 if ($result['success']) {
     $_SESSION['flash_success'] = $result['message'];
 } else {

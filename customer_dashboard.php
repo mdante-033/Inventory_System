@@ -1,4 +1,3 @@
-﻿
 <?php
 require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/includes/functions.php';
@@ -7,7 +6,8 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit;
 }
 
-require_once __DIR__ . '/config/database.php';
+// Ensure a PDO connection is available in this script
+require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/modules/payment_module.php';
 require_once __DIR__ . '/classes/Mpesa.php';
 require_once __DIR__ . '/includes/mpesa_db_helper.php';

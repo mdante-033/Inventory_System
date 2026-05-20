@@ -115,6 +115,34 @@ if (!function_exists('deleteProductImageFile')) {
     }
 }
 
+if (!function_exists('detectProductImageMimeType')) {
+    function detectProductImageMimeType(string $tmpName): ?string
+    {
+        if (class_exists('finfo')) {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->file($tmpName);
+            if (is_string($mimeType) && $mimeType !== '') {
+                return $mimeType;
+            }
+        }
+
+        $imageInfo = @getimagesize($tmpName);
+        if (is_array($imageInfo) && !empty($imageInfo['mime']) && is_string($imageInfo['mime'])) {
+            return $imageInfo['mime'];
+        }
+
+        if (function_exists('exif_imagetype')) {
+            $imageType = @exif_imagetype($tmpName);
+            $mimeType = $imageType ? image_type_to_mime_type($imageType) : false;
+            if (is_string($mimeType) && $mimeType !== '') {
+                return $mimeType;
+            }
+        }
+
+        return null;
+    }
+}
+
 if (!function_exists('handleProductImageUpload')) {
     function handleProductImageUpload(array $file, ?string $existingPath = null): array
     {
@@ -166,8 +194,13 @@ if (!function_exists('handleProductImageUpload')) {
             'image/webp' => 'webp',
         ];
 
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = (string) $finfo->file($tmpName);
+        $mimeType = detectProductImageMimeType($tmpName);
+        if ($mimeType === null) {
+            return [
+                'success' => false,
+                'message' => 'The uploaded image type could not be verified on the server.',
+            ];
+        }
 
         if (!isset($allowedMimeTypes[$mimeType])) {
             return [

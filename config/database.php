@@ -65,7 +65,11 @@ $dbPort = (string) getDbEnvVar('DB_PORT', null, '5432');
 $dbName = (string) getDbEnvVar('DB_NAME', 'DB_DATABASE', 'Inventory_DB');
 $dbUser = (string) getDbEnvVar('DB_USER', 'DB_USERNAME', 'postgres');
 $dbPassword = getenv('DB_PASSWORD');
-$dbPassword = $dbPassword === false ? 'Root' : $dbPassword;
+if ($dbPassword === false || $dbPassword === null) {
+    $dbPassword = in_array($dbHost, ['localhost', '127.0.0.1', '::1'], true)
+        ? 'Root'
+        : '';
+}
 
 require_once __DIR__ . '/../db_connect.php';
 

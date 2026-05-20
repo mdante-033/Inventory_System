@@ -1,0 +1,42 @@
+# render.yaml
+# IMPORTANT: filename must be exactly lowercase "render.yaml"
+# Place in project ROOT (same folder as index.php, login.php etc.)
+# This file tells Render: use Docker to build, no Python, no pip
+
+services:
+  - type: web
+    name: inventory-system
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_URL
+        value: https://inventory-system-cigq.onrender.com
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_FROM_NAME
+        value: Inventory System
+      - key: SMTP_FROM_ADDR
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: Inventory_DB
+      - key: DB_HOST
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
