@@ -2,9 +2,42 @@
 /**
  * includes/account_verification_helper.php
  * PostgreSQL + Render.com + SMTP port 25
+ *
+ * FIX: mail_helper.php is now loaded safely — if the file is missing
+ * the page will NOT crash. Login will still work; only email sending
+ * will be disabled until mail_helper.php is added to the project root.
  */
 
-require_once __DIR__ . '/../mail_helper.php';
+// ── Safe load of mail_helper.php ──────────────────────────────────────────────
+// __DIR__ is /var/www/html/includes  →  '/../mail_helper.php' resolves to
+// /var/www/html/mail_helper.php  (project root, same folder as login.php)
+$_mailHelperPath = __DIR__ . '/../mail_helper.php';
+if (file_exists($_mailHelperPath)) {
+    require_once $_mailHelperPath;
+} else {
+    // Log clearly so you can see it in Render logs, but DO NOT crash the page
+    error_log(
+        '[account_verification_helper] mail_helper.php not found at: ' .
+        realpath(__DIR__ . '/..') . '/mail_helper.php  — email sending disabled.'
+    );
+    // Define a stub MailHelper so any code that calls `new MailHelper()` does
+    // not throw a "Class not found" fatal error
+    if (!class_exists('MailHelper')) {
+        class MailHelper {
+            public function sendRegistrationVerificationCode(
+                string $toEmail, string $toName, string $code,
+                \DateTimeImmutable $expiry, string $verifyUrl
+            ): array {
+                error_log("[MailHelper stub] Would have sent code {$code} to {$toEmail}");
+                return [
+                    'success' => false,
+                    'message' => 'Email not sent: mail_helper.php is missing from the project root.',
+                ];
+            }
+        }
+    }
+}
+unset($_mailHelperPath);
 
 // ── SCHEMA ────────────────────────────────────────────────────────────────────
 if (!function_exists('ensureUsersRegistrationSchema')) {
@@ -61,29 +94,47 @@ if (!function_exists('ensureUsersRegistrationSchema')) {
             }
         }
 
-        $pdo->exec("UPDATE users SET
-            full_name      = COALESCE(NULLIF(full_name,''), username),
-            role           = COALESCE(NULLIF(role,''), 'customer'),
-            customer_group = COALESCE(NULLIF(customer_group,''), 'regular'),
-            is_active      = COALESCE(is_active, TRUE),
-            is_verified    = COALESCE(is_verified, FALSE),
-            account_status = COALESCE(NULLIF(account_status,''),
-                                CASE WHEN COALESCE(is_verified,FALSE) THEN 'active' ELSE 'pending' END),
-            verification_failed_attempts = COALESCE(verification_failed_attempts, 0),
-            verification_resend_count    = COALESCE(verification_resend_count, 0),
-            created_at = COALESCE(created_at, CURRENT_TIMESTAMP),
-            updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)
-        ");
+        try {
+            $pdo->exec("UPDATE users SET
+                full_name      = COALESCE(NULLIF(full_name,''), username),
+                role           = COALESCE(NULLIF(role,''), 'customer'),
+                customer_group = COALESCE(NULLIF(customer_group,''), 'regular'),
+                is_active      = COALESCE(is_active, TRUE),
+                is_verified    = COALESCE(is_verified, FALSE),
+                account_status = COALESCE(NULLIF(account_status,''),
+                                    CASE WHEN COALESCE(is_verified,FALSE)
+                                         THEN 'active' ELSE 'pending' END),
+                verification_failed_attempts = COALESCE(verification_failed_attempts, 0),
+                verification_resend_count    = COALESCE(verification_resend_count, 0),
+                created_at = COALESCE(created_at, CURRENT_TIMESTAMP),
+                updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)
+            ");
+        } catch (\Throwable $e) {
+            error_log("schema backfill: " . $e->getMessage());
+        }
 
-        $pdo->exec("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
-        $pdo->exec("ALTER TABLE users ADD CONSTRAINT users_role_check
-                    CHECK (role IN ('admin','manager','staff','customer','supplier'))");
+        try {
+            $pdo->exec("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
+            $pdo->exec("ALTER TABLE users ADD CONSTRAINT users_role_check
+                        CHECK (role IN ('admin','manager','staff','customer','supplier'))");
+        } catch (\Throwable $e) {
+            error_log("schema role_check: " . $e->getMessage());
+        }
 
-        $pdo->exec("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_account_status_check");
-        $pdo->exec("ALTER TABLE users ADD CONSTRAINT users_account_status_check
-                    CHECK (account_status IN ('pending','active','suspended'))");
+        try {
+            $pdo->exec("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_account_status_check");
+            $pdo->exec("ALTER TABLE users ADD CONSTRAINT users_account_status_check
+                        CHECK (account_status IN ('pending','active','suspended'))");
+        } catch (\Throwable $e) {
+            error_log("schema account_status_check: " . $e->getMessage());
+        }
 
-        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_ci_idx ON users (LOWER(email))");
+        try {
+            $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_ci_idx
+                        ON users (LOWER(email))");
+        } catch (\Throwable $e) {
+            error_log("schema email_index: " . $e->getMessage());
+        }
     }
 }
 
@@ -93,26 +144,20 @@ if (!function_exists('buildAppUrl')) {
     {
         $c = trim((string)(getenv('APP_URL') ?: ''));
         if ($c !== '') return rtrim($c, '/') . '/' . ltrim($path, '/');
-        $https  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-               || (($_SERVER['SERVER_PORT'] ?? '') === '443');
-        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+              || (($_SERVER['SERVER_PORT'] ?? '') === '443');
+        $host  = $_SERVER['HTTP_HOST'] ?? 'localhost';
         return ($https ? 'https' : 'http') . '://' . $host . '/' . ltrim($path, '/');
     }
 }
 
 // ── ROLE → DASHBOARD ─────────────────────────────────────────────────────────
 if (!function_exists('getDashboardForRole')) {
-    /**
-     * Returns the correct dashboard filename for a given role.
-     * Call after successful login OR after successful email verification.
-     *
-     *   header('Location: ' . getDashboardForRole($user['role']));  exit;
-     */
     function getDashboardForRole(string $role): string
     {
         return match (strtolower(trim($role))) {
             'admin', 'manager' => 'admin.php',
-            default => 'customer_dashboard.php',
+            default            => 'customer_dashboard.php',
         };
     }
 }
@@ -126,9 +171,9 @@ if (!function_exists('generateEmailVerificationCode')) {
 }
 
 if (!function_exists('getVerificationExpiryDateTime')) {
-    function getVerificationExpiryDateTime(): DateTimeImmutable
+    function getVerificationExpiryDateTime(): \DateTimeImmutable
     {
-        return (new DateTimeImmutable('now'))->modify('+15 minutes');
+        return (new \DateTimeImmutable('now'))->modify('+15 minutes');
     }
 }
 
@@ -203,9 +248,9 @@ if (!function_exists('getVerificationLockSecondsRemaining')) {
 if (!function_exists('isAccountVerified')) {
     function isAccountVerified(mixed $value): bool
     {
-        if (is_bool($value))  return $value;
-        if ($value === null)  return false;
-        return in_array(strtolower(trim((string)$value)), ['1','true','t','yes','y'], true);
+        if (is_bool($value)) return $value;
+        if ($value === null) return false;
+        return in_array(strtolower(trim((string) $value)), ['1','true','t','yes','y'], true);
     }
 }
 
@@ -228,7 +273,8 @@ if (!function_exists('sendAccountVerificationCode')) {
 
         if ($isResend) {
             $cool = getVerificationResendSecondsRemaining($cu);
-            if ($cool > 0) return ['success' => false, 'message' => 'Please wait before requesting another code.', 'retry_after' => $cool];
+            if ($cool > 0)
+                return ['success' => false, 'message' => 'Please wait before requesting another code.', 'retry_after' => $cool];
             if ((int)($cu['verification_resend_count'] ?? 0) >= 3)
                 return ['success' => false, 'message' => 'Resend limit reached. Contact support.', 'resend_limit_reached' => true];
         }
@@ -251,10 +297,10 @@ if (!function_exists('sendAccountVerificationCode')) {
                     updated_at                   = CURRENT_TIMESTAMP
                 WHERE id = :id
             ")->execute([
-                'code'  => $hashedCode,
-                'expiry'=> $expiry->format('Y-m-d H:i:s'),
-                'rc'    => $isResend ? ((int)($cu['verification_resend_count']??0)+1) : 0,
-                'id'    => $cu['id'],
+                'code'   => $hashedCode,
+                'expiry' => $expiry->format('Y-m-d H:i:s'),
+                'rc'     => $isResend ? ((int)($cu['verification_resend_count'] ?? 0) + 1) : 0,
+                'id'     => $cu['id'],
             ]);
 
             $mail   = new MailHelper();
@@ -288,7 +334,8 @@ if (!function_exists('attemptAccountVerification')) {
     function attemptAccountVerification(PDO $pdo, int $userId, string $code): array
     {
         $user = fetchVerificationUserById($pdo, $userId);
-        if (!$user) return ['success' => false, 'message' => 'Could not find your pending account. Please register again.'];
+        if (!$user)
+            return ['success' => false, 'message' => 'Could not find your pending account. Please register again.'];
 
         if (isAccountVerified($user['is_verified']))
             return ['success' => false, 'message' => 'This account is already verified.', 'already_verified' => true];
@@ -313,10 +360,14 @@ if (!function_exists('attemptAccountVerification')) {
         if (!password_verify($code, (string)$user['verification_code'])) {
             $fa   = (int)($user['verification_failed_attempts'] ?? 0) + 1;
             $lock = $fa >= 5
-                ? (new DateTimeImmutable('now'))->modify('+30 minutes')->format('Y-m-d H:i:s')
+                ? (new \DateTimeImmutable('now'))->modify('+30 minutes')->format('Y-m-d H:i:s')
                 : null;
 
-            $pdo->prepare("UPDATE users SET verification_failed_attempts=:a, verification_locked_until=:l, updated_at=CURRENT_TIMESTAMP WHERE id=:id")
+            $pdo->prepare("UPDATE users SET
+                verification_failed_attempts = :a,
+                verification_locked_until    = :l,
+                updated_at                   = CURRENT_TIMESTAMP
+                WHERE id = :id")
                 ->execute(['a' => $fa, 'l' => $lock, 'id' => $user['id']]);
 
             $rem = max(0, 5 - $fa);
