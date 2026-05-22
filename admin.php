@@ -1,4 +1,4 @@
-﻿<?php 
+<?php 
 /**
  * StockFlow - Inventory Management System
  * Main Dashboard Index File (Modular) - Restyled
