@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/includes/functions.php';
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
