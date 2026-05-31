@@ -3,10 +3,6 @@
  * POST handler for the "Resend Code" button on verify_code.php.
  */
 require_once __DIR__ . '/includes/session.php';
-/**
- * resend_code.php  –  POST handler for "Resend Code" button on verify_code.php
- */
-
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/includes/account_verification_helper.php';
 
@@ -15,8 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+$storedCsrfToken = $_SESSION['verify_csrf'] ?? '';
 $csrfToken = $_POST['csrf_token'] ?? '';
-if (!hash_equals($_SESSION['verify_csrf'] ?? '', $csrfToken)) {
+if ($storedCsrfToken === '' || $csrfToken === '' || !hash_equals($storedCsrfToken, $csrfToken)) {
     $_SESSION['flash_error'] = 'Session expired. Refresh the page and try again.';
     header('Location: verify_code.php');
     exit;
@@ -46,7 +43,7 @@ if (!$user) {
     exit;
 }
 
-// Force a fresh code on every resend
+// Always issue a fresh code on resend; the helper enforces cooldowns and limits.
 $result = sendAccountVerificationCode($pdo, $user, true);
 
 if ($result['success']) {
