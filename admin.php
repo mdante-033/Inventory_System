@@ -127,7 +127,7 @@ if (isset($_POST['action'])) {
                 }
 
                 if ($hasImageUpload && !$productImageColumnAvailable) {
-                    $result = ['success' => false, 'message' => "Run sql/add_product_image_path.sql before uploading product images."];
+                    $result = ['success' => false, 'message' => "Run /run_setup.php once to add the product image column, then delete the setup file."];
                     break;
                 }
 
@@ -186,7 +186,7 @@ if (isset($_POST['action'])) {
                 }
 
                 if (($removeImage || $hasImageUpload) && !$productImageColumnAvailable) {
-                    $result = ['success' => false, 'message' => "Run sql/add_product_image_path.sql before managing product images."];
+                    $result = ['success' => false, 'message' => "Run /run_setup.php once to add the product image column, then delete the setup file."];
                     break;
                 }
 

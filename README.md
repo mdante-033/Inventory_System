@@ -14,7 +14,7 @@ project-root/
 |-- modules/                     # Feature modules
 |-- login.php                    # Login page
 |-- logout.php                   # Logout handler
-|-- setup.php                    # Optional local setup/bootstrap script
+|-- run_setup.php                # One-time Render database installer
 `-- README.md                    # This file
 ```
 
@@ -30,9 +30,19 @@ project-root/
 
 ### First Admin User
 
-This project does **not** ship with default credentials.
+The one-time Render installer creates an administrator from these environment
+variables when they are present:
 
-Create your first administrator during setup by:
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `ADMIN_EMAIL`
+- `ADMIN_NAME`
+
+If those are not set, the installer creates `admin` / `admin123`. Change that
+password immediately after setup, then delete `run_setup.php` from GitHub and
+redeploy.
+
+For a manual setup, create your first administrator by:
 
 1. Generating a strong password hash with PHP.
 2. Inserting an admin record with your own username, email, and password hash.
@@ -274,7 +284,7 @@ Before deploying:
 | `modules/` | Feature-specific application modules |
 | `login.php` | Login form and authentication entry point |
 | `logout.php` | Session termination and redirect logic |
-| `setup.php` | Optional local setup/bootstrap helper |
+| `run_setup.php` | One-time Render database installer; delete after it shows PASS |
 
 ## Troubleshooting
 
