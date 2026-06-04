@@ -4,6 +4,9 @@
  * Handles secure session initialization, validation, and teardown.
  */
 
+// Load security headers first (before any output)
+require_once __DIR__ . '/security_headers.php';
+
 function inventorySessionIsHttps(): bool
 {
     if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
@@ -153,7 +156,7 @@ function rotateSessionCsrfToken(): void
 /**
  * Initialize session with security checks
  */
-function initSession() {
+function initSession(): bool {
     startSecureSession();
 
     $now = time();
@@ -209,7 +212,7 @@ function initSession() {
 /**
  * Create session for logged in user
  */
-function createUserSession($user) {
+function createUserSession(array $user): bool {
     // Regenerate session ID to prevent fixation
     session_regenerate_id(true);
     
@@ -238,7 +241,7 @@ function createUserSession($user) {
 /**
  * Destroy session
  */
-function destroySession($startFresh = true) {
+function destroySession(bool $startFresh = true): void {
     // Clear session data
     $_SESSION = [];
     
@@ -272,7 +275,7 @@ function destroySession($startFresh = true) {
 /**
  * Check if user is logged in
  */
-function isLoggedIn() {
+function isLoggedIn(): bool {
     return isset($_SESSION['logged_in']) && 
            $_SESSION['logged_in'] === true && 
            isset($_SESSION['user_id']);
@@ -281,42 +284,42 @@ function isLoggedIn() {
 /**
  * Get current user ID
  */
-function getCurrentUserId() {
+function getCurrentUserId(): int|string|null {
     return $_SESSION['user_id'] ?? null;
 }
 
 /**
  * Get current username
  */
-function getCurrentUsername() {
+function getCurrentUsername(): ?string {
     return $_SESSION['username'] ?? null;
 }
 
 /**
  * Get current user role
  */
-function getCurrentUserRole() {
+function getCurrentUserRole(): string {
     return $_SESSION['role'] ?? 'guest';
 }
 
 /**
  * Check if user has specific role
  */
-function hasRole($role) {
+function hasRole(string $role): bool {
     return getCurrentUserRole() === $role;
 }
 
 /**
  * Check if user is admin
  */
-function isAdmin() {
+function isAdmin(): bool {
     return hasRole('admin');
 }
 
 /**
  * Check if user is manager or admin
  */
-function isManager() {
+function isManager(): bool {
     $role = getCurrentUserRole();
     return $role === 'admin' || $role === 'manager';
 }
@@ -324,21 +327,21 @@ function isManager() {
 /**
  * Get session data
  */
-function getSessionData($key, $default = null) {
+function getSessionData(string|int $key, mixed $default = null): mixed {
     return $_SESSION[$key] ?? $default;
 }
 
 /**
  * Set session data
  */
-function setSessionData($key, $value) {
+function setSessionData(string|int $key, mixed $value): void {
     $_SESSION[$key] = $value;
 }
 
 /**
  * Flash session data (stored temporarily)
  */
-function flash($key, $value = null) {
+function flash(string|int $key, mixed $value = null): mixed {
     if ($value === null) {
         // Get and clear flash data
         if (isset($_SESSION['flash'][$key])) {
@@ -357,7 +360,7 @@ function flash($key, $value = null) {
 /**
  * Get all flash data
  */
-function getAllFlashData() {
+function getAllFlashData(): array {
     $flashData = $_SESSION['flash'] ?? [];
     unset($_SESSION['flash']);
     return $flashData;
@@ -366,15 +369,17 @@ function getAllFlashData() {
 /**
  * Validate session token
  */
-function validateSessionToken($token) {
-    return isset($_SESSION['session_token']) && 
-           hash_equals($_SESSION['session_token'], $token);
+function validateSessionToken(?string $token): bool {
+    return is_string($token)
+        && isset($_SESSION['session_token'])
+        && is_string($_SESSION['session_token'])
+        && hash_equals($_SESSION['session_token'], $token);
 }
 
 /**
  * Get session info
  */
-function getSessionInfo() {
+function getSessionInfo(): array {
     return [
         'user_id' => $_SESSION['user_id'] ?? null,
         'username' => $_SESSION['username'] ?? null,
@@ -389,7 +394,7 @@ function getSessionInfo() {
 /**
  * Extend session
  */
-function extendSession() {
+function extendSession(): bool {
     $_SESSION['last_activity'] = time();
     return true;
 }
@@ -397,7 +402,7 @@ function extendSession() {
 /**
  * Get session remaining time
  */
-function getSessionRemainingTime() {
+function getSessionRemainingTime(): int {
     if (!isset($_SESSION['last_activity'])) {
         return 0;
     }
@@ -409,14 +414,14 @@ function getSessionRemainingTime() {
 /**
  * Set session message (for displaying to user)
  */
-function setMessage($type, $message) {
+function setMessage(string $type, string $message): void {
     $_SESSION['messages'][$type] = $message;
 }
 
 /**
  * Get and clear session messages
  */
-function getMessages() {
+function getMessages(): array {
     $messages = $_SESSION['messages'] ?? [];
     unset($_SESSION['messages']);
     return $messages;
@@ -425,7 +430,7 @@ function getMessages() {
 /**
  * Check if user IP changed (security)
  */
-function checkIPChange() {
+function checkIPChange(): bool {
     if (!isset($_SESSION['ip_address'])) {
         return true;
     }

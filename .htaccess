@@ -1,0 +1,183 @@
+# Apache Web Server Security Configuration
+# Place this in your project root .htaccess file
+
+# ============================================================================
+# SECURITY HEADERS
+# ============================================================================
+
+# Prevent MIME type sniffing
+Header always set X-Content-Type-Options "nosniff"
+
+# Prevent clickjacking (Clickjack protection)
+Header always set X-Frame-Options "SAMEORIGIN"
+
+# Enable XSS protection in older browsers
+Header always set X-XSS-Protection "1; mode=block"
+
+# Referrer Policy - Strict origin when cross-origin
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Content Security Policy - Strict
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+
+# Permissions Policy (formerly Feature Policy)
+Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+
+# HSTS (Force HTTPS) - 1 year with subdomains
+Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+# Remove sensitive server headers
+Header always unset Server
+Header always unset X-Powered-By
+Header always unset X-AspNet-Version
+
+# ============================================================================
+# FORCE HTTPS
+# ============================================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Redirect HTTP to HTTPS
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    
+    # Remove www prefix if present
+    RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+    RewriteRule ^(.*)$ https://%1/$1 [L,R=301]
+</IfModule>
+
+# ============================================================================
+# DISABLE DIRECTORY LISTING
+# ============================================================================
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# ============================================================================
+# PROTECT SENSITIVE FILES
+# ============================================================================
+<FilesMatch "\.(env|json|md|sql|log|yml|yaml|xml|sh|bash|pl)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Protect config directory
+<Directory "*/config">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Directory>
+
+# Protect includes directory
+<Directory "*/includes">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Directory>
+
+# ============================================================================
+# PREVENT EXECUTION OF PHP FILES IN UPLOAD DIRECTORY
+# ============================================================================
+<Directory "*/uploads">
+    <FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phps|pht|phar|shtml|pl|py|jsp|asp|sh|cgi)$">
+        <IfModule mod_authz_core.c>
+            Require all denied
+        </IfModule>
+        <IfModule !mod_authz_core.c>
+            Order allow,deny
+            Deny from all
+        </IfModule>
+    </FilesMatch>
+    <IfModule mod_autoindex.c>
+        Options -Indexes
+    </IfModule>
+</Directory>
+
+# ============================================================================
+# CACHE CONTROL
+# ============================================================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Don't cache HTML files (especially login/admin pages)
+    ExpiresByType text/html "now"
+    
+    # Cache CSS/JS for 1 month
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType application/x-javascript "access plus 1 month"
+    
+    # Cache images for 1 month
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    
+    # Cache fonts for 1 year
+    ExpiresByType font/ttf "access plus 1 year"
+    ExpiresByType font/otf "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+# ============================================================================
+# DISABLE SCRIPT EXECUTION IN TEMP/LOG DIRECTORIES
+# ============================================================================
+<Directory "*/logs">
+    <FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8)$">
+        <IfModule mod_authz_core.c>
+            Require all denied
+        </IfModule>
+        <IfModule !mod_authz_core.c>
+            Order allow,deny
+            Deny from all
+        </IfModule>
+    </FilesMatch>
+</Directory>
+
+# ============================================================================
+# PREVENT ACCESS TO .GIT, .ENV, AND OTHER SENSITIVE DIRECTORIES
+# ============================================================================
+<DirectoryMatch "^\.|^\.git|^\.env">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</DirectoryMatch>
+
+# ============================================================================
+# COMPRESSION
+# ============================================================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ============================================================================
+# CHARSET ENCODING
+# ============================================================================
+AddDefaultCharset UTF-8
+AddCharset UTF-8 .html .htm .php .css .js .json .xml

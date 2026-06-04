@@ -1,0 +1,102 @@
+[PHP Configuration for Security]
+; This is a reference file for php.ini settings needed for production security.
+; Copy these settings to your actual php.ini file in your hosting environment.
+
+; ============================================================================
+; DISABLE DANGEROUS FUNCTIONS
+; ============================================================================
+disable_functions = exec,shell_exec,system,passthru,proc_open,proc_close,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source,symlink,link,hardlink,mkdir,dl,fscanm,readfile,readlink,linkinfo,link,symlink,chroot,proc_get_status
+
+; Disable potentially dangerous classes
+disable_classes = 
+
+; ============================================================================
+; ERROR HANDLING - PRODUCTION
+; ============================================================================
+; Never show errors to users
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+error_log = /var/log/php/error.log
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+
+; Log warnings and above
+log_errors_max_len = 1024
+
+; ============================================================================
+; SESSION SECURITY
+; ============================================================================
+; Use cookies only for sessions
+session.use_only_cookies = 1
+; Don't accept session ID from URL
+session.use_trans_sid = 0
+; Use strict session mode - reject invalid session IDs
+session.use_strict_mode = 1
+; HttpOnly flag on cookies (prevent JavaScript access)
+session.cookie_httponly = 1
+; Secure flag on cookies (HTTPS only)
+session.cookie_secure = 1
+; SameSite attribute for CSRF protection
+session.cookie_samesite = Strict
+; Session ID length
+session.sid_length = 48
+; Session ID entropy bits per character
+session.sid_bits_per_character = 6
+; Session name
+session.name = INVSYSSESSID
+; Session timeout (30 minutes)
+session.gc_maxlifetime = 1800
+; Session cookie lifetime (0 = expires on browser close)
+session.cookie_lifetime = 0
+
+; ============================================================================
+; FILE HANDLING
+; ============================================================================
+; Restrict file uploads
+file_uploads = On
+upload_max_filesize = 10M
+post_max_size = 10M
+max_file_uploads = 5
+upload_tmp_dir = /tmp
+
+; ============================================================================
+; SECURITY HEADERS
+; ============================================================================
+; Expose less information about PHP
+expose_php = Off
+expose_cgi_php = Off
+
+; ============================================================================
+; DATABASE
+; ============================================================================
+; Use prepared statements (PDO)
+; Handled in code with PDO::ATTR_EMULATE_PREPARES = false
+
+; ============================================================================
+; ENCRYPTION
+; ============================================================================
+; OpenSSL module (required for encryption)
+extension = openssl
+
+; ============================================================================
+; PERFORMANCE
+; ============================================================================
+; Prevent DoS attacks with memory limits
+memory_limit = 256M
+max_execution_time = 300
+max_input_time = 300
+max_input_vars = 1000
+
+; ============================================================================
+; OPTIONAL - HARDENED SETTINGS
+; ============================================================================
+; Disable inline code execution in scripts (if using SUHOSIN patch)
+; suhosin.executor.include.whitelist = phar
+; suhosin.executor.func.blacklist = system,exec,passthru,shell_exec,proc_open,pcntl_exec,eval
+
+; ============================================================================
+; LOCAL DEVELOPMENT (Uncomment these for development environments)
+; ============================================================================
+; display_errors = On
+; display_startup_errors = On
+; error_reporting = E_ALL

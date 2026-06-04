@@ -1,0 +1,178 @@
+# Nginx Security Configuration
+# Place this in your Nginx server block configuration
+# Reference: Add to your nginx.conf or site-specific config
+
+# ============================================================================
+# SECURITY HEADERS
+# ============================================================================
+
+# Prevent MIME type sniffing
+add_header X-Content-Type-Options "nosniff" always;
+
+# Prevent clickjacking
+add_header X-Frame-Options "SAMEORIGIN" always;
+
+# XSS Protection for older browsers
+add_header X-XSS-Protection "1; mode=block" always;
+
+# Referrer Policy
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+# Content Security Policy
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://code.jquery.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+
+# Permissions Policy
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" always;
+
+# HSTS (HTTP Strict Transport Security)
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+# Remove sensitive headers
+server_tokens off;
+
+# ============================================================================
+# FORCE HTTPS
+# ============================================================================
+server {
+    listen 80;
+    server_name example.com www.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+# ============================================================================
+# MAIN SERVER BLOCK (HTTPS)
+# ============================================================================
+server {
+    listen 443 ssl http2;
+    server_name example.com www.example.com;
+
+    # SSL/TLS Configuration
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    root /var/www/html;
+    index index.php;
+
+    # ========================================================================
+    # DENY ACCESS TO SENSITIVE DIRECTORIES
+    # ========================================================================
+    location ~ /\. {
+        deny all;
+    }
+
+    location ~ /\.env {
+        deny all;
+    }
+
+    location ~ /config {
+        deny all;
+    }
+
+    location ~ /includes {
+        deny all;
+    }
+
+    location ~ /sql {
+        deny all;
+    }
+
+    location ~ /logs {
+        deny all;
+    }
+
+    location ~ /uploads/.*\.(php|phtml|php3|php4|php5|php7|php8|phar|shtml|pl|py|jsp|asp|sh|cgi)$ {
+        deny all;
+    }
+
+    # ========================================================================
+    # DENY ACCESS TO SENSITIVE FILES
+    # ========================================================================
+    location ~ \.(env|json|md|sql|log|yml|yaml|xml|sh|bash|pl)$ {
+        deny all;
+    }
+
+    location ~ /composer.json {
+        deny all;
+    }
+
+    location ~ /composer.lock {
+        deny all;
+    }
+
+    location ~ /\.git {
+        deny all;
+    }
+
+    # ========================================================================
+    # DISABLE DIRECTORY LISTING
+    # ========================================================================
+    autoindex off;
+
+    # ========================================================================
+    # PHP-FPM CONFIGURATION
+    # ========================================================================
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_read_timeout 300;
+        fastcgi_buffers 8 16k;
+        fastcgi_buffer_size 32k;
+    }
+
+    # ========================================================================
+    # CACHING
+    # ========================================================================
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|otf)$ {
+        expires 1M;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Don't cache HTML files
+    location ~ \.html$ {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";
+    }
+
+    # ========================================================================
+    # GZIP COMPRESSION
+    # ========================================================================
+    gzip on;
+    gzip_types text/plain text/css text/javascript application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+    gzip_comp_level 6;
+
+    # ========================================================================
+    # LOGGING
+    # ========================================================================
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log warn;
+
+    # ========================================================================
+    # RATE LIMITING (Optional)
+    # ========================================================================
+    # Define rate limit zones in http block:
+    # limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+    # limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;
+    #
+    # Apply limits:
+    # location ~ /login\.php$ {
+    #     limit_req zone=login burst=5 nodelay;
+    #     include fastcgi_params;
+    #     fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+    # }
+}
+
+# ============================================================================
+# UPSTEAM PHP-FPM POOL (in http block)
+# ============================================================================
+# upstream php_backend {
+#     server unix:/run/php/php8.2-fpm.sock;
+#     # or for TCP:
+#     # server 127.0.0.1:9000;
+# }
