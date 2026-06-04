@@ -1,5 +1,5 @@
 <?php
-/**
+/**  
  * One-time Render database installer for Inventory_System.
  *
  * Push this file, visit /run_setup.php once on Render, confirm every required
