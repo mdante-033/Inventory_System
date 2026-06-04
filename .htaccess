@@ -37,11 +37,17 @@ Header always unset X-AspNet-Version
 <IfModule mod_rewrite.c>
     RewriteEngine On
     
-    # Redirect HTTP to HTTPS
+    # Check for HTTPS using X-Forwarded-Proto (for proxies like Render)
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    # AND also check HTTPS server variable (for direct connections)
     RewriteCond %{HTTPS} off
+    # Only redirect if both conditions are true AND it's not a health check
+    RewriteCond %{REQUEST_URI} !^/health\.php$
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
     
-    # Remove www prefix if present
+    # Remove www prefix if present (only if secure)
+    RewriteCond %{HTTP:X-Forwarded-Proto} https [OR]
+    RewriteCond %{HTTPS} on
     RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
     RewriteRule ^(.*)$ https://%1/$1 [L,R=301]
 </IfModule>

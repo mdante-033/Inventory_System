@@ -9,9 +9,12 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health.php
     envVars:
+      - key: PORT
+        value: "10000"
       - key: APP_URL
-        value: https://inventory-system-cigq.onrender.com
+        value: https://inventory-system-1-tggc.onrender.com
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -30,13 +33,14 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: DB_HOST
+        sync: false
       - key: DB_PORT
         value: "5432"
       - key: DB_NAME
         value: Inventory_DB
-      - key: DB_HOST
-        sync: false
       - key: DB_USER
         sync: false
       - key: DB_PASSWORD
         sync: false
+
