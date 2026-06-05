@@ -662,36 +662,44 @@ $page_title = $page_titles[$page] ?? ucfirst($page);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-    window.ADMIN_CSRF_TOKEN = <?= json_encode($adminCsrfToken) ?>;
+  window.ADMIN_CSRF_TOKEN = <?= json_encode($adminCsrfToken) ?>;
 
-    (function () {
-        const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-        if (!nativeFetch) return;
+(function () {
+    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    if (!nativeFetch) return;
 
-        window.fetch = function (input, init) {
-            const options = Object.assign({}, init || {});
-            const method = String(options.method || 'GET').toUpperCase();
+    window.fetch = function (input, init) {
+        const options = Object.assign({}, init || {});
+        const method = String(options.method || 'GET').toUpperCase();
 
-            if (method === 'POST' && window.ADMIN_CSRF_TOKEN) {
-                if (options.body instanceof FormData || options.body instanceof URLSearchParams) {
-                    if (!options.body.has('csrf_token')) {
-                        options.body.append('csrf_token', window.ADMIN_CSRF_TOKEN);
+        if (method === 'POST' && window.ADMIN_CSRF_TOKEN) {
+            if (options.body instanceof FormData || options.body instanceof URLSearchParams) {
+                if (!options.body.has('csrf_token')) {
+                    options.body.append('csrf_token', window.ADMIN_CSRF_TOKEN);
+                }
+            } else if (typeof options.body === 'string') {
+                try {
+                    const parsed = JSON.parse(options.body);
+                    if (typeof parsed === 'object' && parsed !== null && !parsed.csrf_token) {
+                        parsed.csrf_token = window.ADMIN_CSRF_TOKEN;
+                        options.body = JSON.stringify(parsed);
                     }
-                } else if (typeof options.body === 'string') {
+                } catch (e) {
                     const separator = options.body.length ? '&' : '';
                     options.body += separator + 'csrf_token=' + encodeURIComponent(window.ADMIN_CSRF_TOKEN);
-                } else if (!options.body) {
-                    options.body = new URLSearchParams({ csrf_token: window.ADMIN_CSRF_TOKEN });
                 }
-
-                options.headers = Object.assign({}, options.headers || {}, {
-                    'X-CSRF-Token': window.ADMIN_CSRF_TOKEN
-                });
+            } else if (!options.body) {
+                options.body = new URLSearchParams({ csrf_token: window.ADMIN_CSRF_TOKEN });
             }
 
-            return nativeFetch(input, options);
-        };
-    })();
+            options.headers = Object.assign({}, options.headers || {}, {
+                'X-CSRF-Token': window.ADMIN_CSRF_TOKEN
+            });
+        }
+
+        return nativeFetch(input, options);
+    };
+})();
 
     // Apply the saved theme before styles paint to reduce flashing.
     (function () {
