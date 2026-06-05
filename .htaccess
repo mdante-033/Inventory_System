@@ -73,8 +73,8 @@
     </IfModule>
 </FilesMatch>
 
-# Protect config directory
-<DirectoryMatch "^.*/config$">
+# Protect hidden files and directories (.git, .env, etc.)
+<FilesMatch "^\.">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -82,36 +82,7 @@
         Order allow,deny
         Deny from all
     </IfModule>
-</DirectoryMatch>
-
-# Protect includes directory
-<DirectoryMatch "^.*/includes$">
-    <IfModule mod_authz_core.c>
-        Require all denied
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Deny from all
-    </IfModule>
-</DirectoryMatch>
-
-# ============================================================================
-# PREVENT EXECUTION OF PHP FILES IN UPLOAD DIRECTORY
-# ============================================================================
-<DirectoryMatch "^.*/uploads$">
-    <FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phps|pht|phar|shtml|pl|py|jsp|asp|sh|cgi)$">
-        <IfModule mod_authz_core.c>
-            Require all denied
-        </IfModule>
-        <IfModule !mod_authz_core.c>
-            Order allow,deny
-            Deny from all
-        </IfModule>
-    </FilesMatch>
-    <IfModule mod_autoindex.c>
-        Options -Indexes
-    </IfModule>
-</DirectoryMatch>
+</FilesMatch>
 
 # ============================================================================
 # CACHE CONTROL
@@ -140,34 +111,6 @@
     ExpiresByType font/woff "access plus 1 year"
     ExpiresByType font/woff2 "access plus 1 year"
 </IfModule>
-
-# ============================================================================
-# DISABLE SCRIPT EXECUTION IN TEMP/LOG DIRECTORIES
-# ============================================================================
-<DirectoryMatch "^.*/logs$">
-    <FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8)$">
-        <IfModule mod_authz_core.c>
-            Require all denied
-        </IfModule>
-        <IfModule !mod_authz_core.c>
-            Order allow,deny
-            Deny from all
-        </IfModule>
-    </FilesMatch>
-</DirectoryMatch>
-
-# ============================================================================
-# PREVENT ACCESS TO .GIT, .ENV, AND OTHER SENSITIVE DIRECTORIES
-# ============================================================================
-<DirectoryMatch "^\.|\.git|\.env">
-    <IfModule mod_authz_core.c>
-        Require all denied
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Deny from all
-    </IfModule>
-</DirectoryMatch>
 
 # ============================================================================
 # COMPRESSION
