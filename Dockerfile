@@ -24,7 +24,7 @@ RUN docker-php-ext-install \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # ── 4. Apache modules: rewrite + env (env needed for PassEnv to work) ─────────
-RUN a2enmod rewrite env \
+RUN a2enmod headers rewrite \
     && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
 # ── 5. App files ──────────────────────────────────────────────────────────────
