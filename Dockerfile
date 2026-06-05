@@ -43,7 +43,7 @@ RUN mkdir -p /var/www/html/uploads/products \
 # ── 8. PHP ini: make getenv() work under Apache + FPM ────────────────────────
 # variables_order must include E (environment) so $_ENV and getenv() work
 RUN echo "variables_order = EGPCS" >> /usr/local/etc/php/conf.d/render.ini \
-    && echo "display_errors = Off" >> /usr/local/etc/php/conf.d/render.ini \
+    && echo "display_errors = On" >> /usr/local/etc/php/conf.d/render.ini \
     && echo "log_errors = On" >> /usr/local/etc/php/conf.d/render.ini \
     && echo "error_log = /var/www/html/logs/php_errors.log" >> /usr/local/etc/php/conf.d/render.ini \
     && echo "memory_limit = 256M" >> /usr/local/etc/php/conf.d/render.ini
