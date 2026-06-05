@@ -2,6 +2,13 @@
 # Place this in your project root .htaccess file
 
 # ============================================================================
+# DEFAULT DOCUMENT
+# ============================================================================
+<IfModule mod_dir.c>
+    DirectoryIndex index.php index.html luxestore.php
+</IfModule>
+
+# ============================================================================
 # SECURITY HEADERS
 # ============================================================================
 <IfModule mod_headers.c>
