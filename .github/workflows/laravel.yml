@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   php-tests:
     runs-on: ubuntu-latest
@@ -43,52 +46,50 @@ jobs:
         run: |
           PGPASSWORD=postgres psql -h localhost -U postgres -d inventory_test -c "SELECT version();"
 
-      - name: Validate PHP syntax (all files)
+      - name: Validate PHP syntax
         run: |
-          find . -name "*.php" \
-            -not -path "./vendor/*" \
-            -not -path "./.git/*" \
-            | xargs -r php -l
+          echo "Scanning all PHP files for syntax errors..."
+          failed=0
+          while IFS= read -r -d '' file; do
+            output=$(php -l "$file" 2>&1)
+            if echo "$output" | grep -q "Errors parsing\|Parse error"; then
+              echo "SYNTAX ERROR: $file"
+              echo "$output"
+              failed=1
+            else
+              echo "OK: $file"
+            fi
+          done < <(find . -name "*.php" -not -path "./vendor/*" -not -path "./.git/*" -print0)
+          if [ $failed -eq 1 ]; then
+            echo ""
+            echo "One or more PHP files have syntax errors. Fix them before merging."
+            exit 1
+          fi
+          echo ""
+          echo "All PHP files passed syntax check."
 
       - name: Check critical files exist
         run: |
-          files=(
-            "index.php"
-            "admin.php"
-            "login.php"
-            "db_connect.php"
-            "luxestore.php"
-          )
           missing=0
-          for f in "${files[@]}"; do
-            if [ ! -f "$f" ]; then
+          for f in index.php admin.php login.php db_connect.php luxestore.php; do
+            if [ -f "$f" ]; then
+              echo "OK: $f"
+            else
               echo "MISSING: $f"
               missing=1
-            else
-              echo "OK: $f"
             fi
           done
           exit $missing
 
-      - name: Check modules directory
+      - name: Check module files exist
         run: |
-          modules=(
-            "modules/dashboard.php"
-            "modules/products.php"
-            "modules/inventory.php"
-            "modules/orders.php"
-            "modules/customers.php"
-            "modules/suppliers.php"
-            "modules/reports.php"
-            "modules/settings.php"
-          )
           missing=0
-          for f in "${modules[@]}"; do
-            if [ ! -f "$f" ]; then
-              echo "MISSING: $f"
-              missing=1
+          for f in dashboard products inventory orders customers suppliers reports settings; do
+            if [ -f "modules/${f}.php" ]; then
+              echo "OK: modules/${f}.php"
             else
-              echo "OK: $f"
+              echo "MISSING: modules/${f}.php"
+              missing=1
             fi
           done
           exit $missing
