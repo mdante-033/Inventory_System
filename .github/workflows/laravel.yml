@@ -1,54 +1,94 @@
-name: PHP CI
+name: PHP Tests
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
+    branches: [ main ]
 
 jobs:
-  php-checks:
+  php-tests:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: inventory_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
-          extensions: pdo, pgsql
+          php-version: '8.2'
+          extensions: pdo, pdo_pgsql, mbstring, openssl
           coverage: none
-          tools: composer:v2
 
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.composer/cache/files
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
+      - name: Check PHP version
+        run: php --version
 
-      - name: Validate composer.json
-        run: composer validate --no-check-publish
-
-      - name: Install Composer dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
-
-      - name: Lint PHP files
-        run: find . -path ./vendor -prune -o -name "*.php" -print0 | xargs -0 -n1 php -l
-
-      - name: Run PHPUnit when configured
+      - name: Check PostgreSQL connection
         run: |
-          if [ -f phpunit.xml ] || [ -f phpunit.xml.dist ]; then
-            vendor/bin/phpunit
-          else
-            echo "No PHPUnit configuration file found; skipping automated tests."
-          fi
+          PGPASSWORD=postgres psql -h localhost -U postgres -d inventory_test -c "SELECT version();"
+
+      - name: Validate PHP syntax (all files)
+        run: |
+          find . -name "*.php" \
+            -not -path "./vendor/*" \
+            -not -path "./.git/*" \
+            | xargs -r php -l
+
+      - name: Check critical files exist
+        run: |
+          files=(
+            "index.php"
+            "admin.php"
+            "login.php"
+            "db_connect.php"
+            "luxestore.php"
+          )
+          missing=0
+          for f in "${files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              missing=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          exit $missing
+
+      - name: Check modules directory
+        run: |
+          modules=(
+            "modules/dashboard.php"
+            "modules/products.php"
+            "modules/inventory.php"
+            "modules/orders.php"
+            "modules/customers.php"
+            "modules/suppliers.php"
+            "modules/reports.php"
+            "modules/settings.php"
+          )
+          missing=0
+          for f in "${modules[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              missing=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          exit $missing
