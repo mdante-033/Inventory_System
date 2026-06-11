@@ -29,7 +29,7 @@ require_once __DIR__ . '/includes/functions.php';
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'dashboard';
 
-require_once 'db_connect.php';
+require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/includes/settings_helper.php';
 require_once __DIR__ . '/includes/product_image_helper.php';
 

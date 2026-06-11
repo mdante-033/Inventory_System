@@ -538,7 +538,7 @@ function getSalesChartData(PDO $pdo, int $days = 7): array {
 /**
  * Format status badge
  */
-function formatStatus(string $status, string $type = 'badge'): string {
+function formatStatus(string $status, string $type = 'badge'): string|array {
     $statuses = [
         'active' => ['class' => 'success', 'icon' => 'check-circle'],
         'inactive' => ['class' => 'secondary', 'icon' => 'times-circle'],
