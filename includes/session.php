@@ -4,6 +4,22 @@
  * Handles secure session initialization, validation, and teardown.
  */
 
+// 1. Secure Session Cookie Settings
+ini_set('session.cookie_httponly', 1);
+ini_set('session.use_only_cookies', 1);
+ini_set('session.cookie_secure', isset($_SERVER['HTTPS'])); // 1 if HTTPS
+ini_set('session.cookie_samesite', 'Strict');
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 2. Security Headers
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('Referrer-Policy: no-referrer-when-downgrade');
+
 // Load security headers first (before any output)
 require_once __DIR__ . '/security_headers.php';
 

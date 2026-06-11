@@ -1,7 +1,27 @@
 <?php
 
 require_once __DIR__ . '/ajax/bootstrap.php';
+require_once __DIR__ . '/../includes/security_logger.php';
+require_once __DIR__ . '/../includes/session.php';
 
+// 2. Enforce CSRF Token (Fixes vulnerability)
+$action = $_POST['action'] ?? 'save';
+$logger = new SecurityLogger($pdo);
+
+if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
+    $logger->logFailedAuth('csrf_token', 'invalid_token');
+    http_response_code(419);
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token.']);
+    exit;
+}
+
+// 3. Process safely
+switch ($action) {
+    case 'save':
+        $result = adminSaveCustomer($pdo, $_POST);
+        jsonResponse($result, $result['success'] ? 200 : 422);
+        break;
+}
 $action = $_POST['action'] ?? 'save';
 
 switch ($action) {

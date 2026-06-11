@@ -3,31 +3,58 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json');
+
+// 1. Include dependencies first
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../includes/functions.php';
-
 require_once __DIR__ . '/../../db_connect.php';
 require_once __DIR__ . '/../../classes/Mpesa.php';
 require_once __DIR__ . '/../../includes/mpesa_db_helper.php';
+require_once __DIR__ . '/../../includes/rate_limiter.php';
 
+// 2. Enforce Request Method (Prevents bots from spamming GET requests)
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Use POST for STK Push requests.']);
     exit;
 }
 
+// 3. Enforce Authentication (Prevents anonymous spam)
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Authentication required.']);
     exit;
 }
 
+// 4. Initialize Database and Rate Limiter
 if (!$pdo instanceof PDO) {
     http_response_code(503);
     echo json_encode(['success' => false, 'message' => 'Database connection unavailable.']);
     exit;
 }
 
+$rateLimiter = new RateLimiter($pdo);
+$userId = (int)($_SESSION['user_id'] ?? 0);
+
+// 5. Apply Rate Limiting safely (Max 5 requests per 10 minutes)
+// 6. Define the limit parameters (5 attempts per 600 seconds / 10 minutes)
+$maxAttempts = 5;
+$timeWindow = 600;
+
+// 7. Check if the user is currently rate limited
+if ($rateLimiter->isLimited($maxAttempts, $timeWindow)) {
+    http_response_code(429);
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Too many requests. Please wait 10 minutes before trying again.'
+    ]);
+    exit;
+}
+
+// 8. Record the attempt so the counter increases
+$rateLimiter->recordAttempt(false);
+
+// 9. Proceed with standard validations (CSRF, Order ID, Phone Number)
 if (!mpesaTransactionsTableExists($pdo)) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Run sql/mpesa_postgresql.sql before using M-Pesa payments.']);
@@ -57,21 +84,18 @@ if ($orderId === false || $phoneNumber === '') {
     exit;
 }
 
-$orderStmt = $pdo->prepare("
-    SELECT id, user_id, total_amount
-    FROM orders
-    WHERE id = ?
-    LIMIT 1
-");
+// 7. Fetch Order & Verify Ownership
+$orderStmt = $pdo->prepare("SELECT id, user_id, total_amount FROM orders WHERE id = ? LIMIT 1");
 $orderStmt->execute([$orderId]);
 $order = $orderStmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$order || (int) ($order['user_id'] ?? 0) !== (int) ($_SESSION['user_id'] ?? 0)) {
+if (!$order || (int) ($order['user_id'] ?? 0) !== $userId) {
     http_response_code(404);
     echo json_encode(['success' => false, 'message' => 'Order not found.']);
     exit;
 }
 
+// 8. Initiate STK Push
 $mpesa = new Mpesa();
 if (!$mpesa->validatePhoneNumber($phoneNumber)) {
     http_response_code(422);
@@ -86,15 +110,11 @@ if (!$stkResult['success']) {
     exit;
 }
 
+// 9. Record Transaction
 $insertStmt = $pdo->prepare("
     INSERT INTO mpesa_transactions (
-        order_id,
-        checkout_request_id,
-        merchant_request_id,
-        phone_number,
-        amount,
-        result_desc,
-        status
+        order_id, checkout_request_id, merchant_request_id, 
+        phone_number, amount, result_desc, status
     ) VALUES (?, ?, ?, ?, ?, ?, 'pending')
 ");
 $insertStmt->execute([
