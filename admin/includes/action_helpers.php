@@ -4,7 +4,8 @@ require_once __DIR__ . '/../../includes/functions.php';
 require_once __DIR__ . '/../../modules/order_module.php';
 require_once __DIR__ . '/../../modules/payment_module.php';
 
-function adminLogAction($action, array $context = []): void
+// FIXED: Removed the broken $_POST logic from the function parameter
+function adminLogAction(string $action, array $context = []): void
 {
     $logDir = dirname(__DIR__, 2) . '/logs';
     if (!is_dir($logDir)) {
@@ -19,6 +20,7 @@ function adminLogAction($action, array $context = []): void
 
     @file_put_contents($logDir . '/admin_actions.log', $entry . PHP_EOL, FILE_APPEND);
 }
+
 
 function adminRequireCsrf(): void
 {
