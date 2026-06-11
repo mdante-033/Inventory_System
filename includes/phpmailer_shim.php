@@ -16,50 +16,60 @@ if (!class_exists('ShimPHPMailerSMTP')) {
 if (!class_exists('ShimPHPMailer')) {
     class ShimPHPMailer
     {
-        public $SMTPDebug = 0;
-        public $Host;
-        public $SMTPAuth;
-        public $Username;
-        public $Password;
-        public $SMTPSecure;
-        public $Port;
-        public $From;
-        public $FromName;
-        public $CharSet = 'UTF-8';
-        public $Subject;
-        public $Body;
-        public $AltBody;
-        public $ErrorInfo = '';
+        public int $SMTPDebug = 0;
+        public string $Host = '';
+        public bool $SMTPAuth = false;
+        public string $Username = '';
+        public string $Password = '';
+        public string $SMTPSecure = '';
+        public int $Port = 25;
+        public string $From = '';
+        public string $FromName = '';
+        public string $CharSet = 'UTF-8';
+        public string $Subject = '';
+        public string $Body = '';
+        public string $AltBody = '';
+        public string $ErrorInfo = '';
 
-        private $to = [];
+        private array $to = [];
 
         public function __construct($exceptions = null)
         {
+            // Initialize with default values
         }
 
-        public function isSMTP() {}
+        public function isSMTP(): void
+        {
+            // Implementation
+        }
 
-        public function setFrom($email, $name = '')
+        public function setFrom(string $email, string $name = ''): void
         {
             $this->From = $email;
             $this->FromName = $name;
         }
 
-        public function addReplyTo($address, $name = '') {}
+        public function addReplyTo(string $address, string $name = ''): void
+        {
+            // Implementation
+        }
 
-        public function isHTML($bool) {}
+        public function isHTML(bool $bool): void
+        {
+            // Implementation
+        }
 
-        public function clearAddresses()
+        public function clearAddresses(): void
         {
             $this->to = [];
         }
 
-        public function addAddress($address)
+        public function addAddress(string $address): void
         {
             $this->to[] = $address;
         }
 
-        public function send()
+        public function send(): bool
         {
             $to = implode(',', $this->to);
             $headers = "MIME-Version: 1.0\r\n";
