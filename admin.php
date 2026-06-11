@@ -1,27 +1,38 @@
 <?php
 /**
- * StockFlow - Inventory Management System
- * admin.php — Shell + POST action handler
+ * StockFlow — Inventory Management System
+ * admin.php  Shell + POST action handler
  *
- * Button-bug fixes applied:
- *  1. CSRF token injected correctly into ALL fetch body types (FormData,
- *     URLSearchParams, JSON string, empty body).
- *  2. nativeFetch captured inside IIFE so it is never undefined.
- *  3. ob_start() added so no accidental output leaks before JSON headers.
- *  4. Every POST action returns JSON immediately and calls exit — no
- *     double-render risk.
- *  5. X-Requested-With header checked as extra guard so direct-browser
- *     GET never accidentally hits the action switch.
- *  6. delete_product / delete_customer / delete_supplier validate the id
- *     before running the query (prevents silent no-ops on bad input).
- *  7. adjust_stock validates product_id and adjustment_type whitelist.
- *  8. create_order generates a collision-safe order number.
- *  9. showModal / hideModal exposed on window so module files can call them.
- * 10. Global fetch error handler added so network failures show a toast
- *     instead of silently failing.
+ * KEY FIX (buttons not working):
+ *   PHP only populates $_POST for form-encoded and multipart bodies.
+ *   When module JS sends fetch() with JSON body (Content-Type: application/json),
+ *   $_POST is empty and the action switch never fires.
+ *   Fix: read php://input once right after ob_start(), decode it, and
+ *   merge it INTO $_POST so every $_POST['field'] reference below works
+ *   unchanged for BOTH form-encoded AND JSON requests.
  */
 
 ob_start();
+
+/* ══════════════════════════════════════════════════════════════════════
+   JSON BODY FIX — must be before any $_POST read
+   Merges a JSON request body into $_POST so the rest of the file works
+   identically whether the module sends FormData or JSON.stringify().
+══════════════════════════════════════════════════════════════════════ */
+$_rawInput = file_get_contents('php://input');
+if (!empty($_rawInput)) {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    // Only attempt JSON decode when the body looks like JSON
+    if (stripos($contentType, 'application/json') !== false
+        || (isset($_rawInput[0]) && $_rawInput[0] === '{')
+    ) {
+        $decoded = json_decode($_rawInput, true);
+        if (is_array($decoded)) {
+            // $_POST values (e.g. from multipart) win on key collision
+            $_POST = array_merge($decoded, $_POST);
+        }
+    }
+}
 
 require_once __DIR__ . '/includes/session.php';
 require_once __DIR__ . '/admin/includes/auth-check.php';
@@ -34,7 +45,7 @@ require_once __DIR__ . '/includes/settings_helper.php';
 require_once __DIR__ . '/includes/product_image_helper.php';
 
 if (!isset($pdo) || $pdo === null) {
-    die("Critical Error: Database connection failed. Please check your PostgreSQL setup.");
+    die('Critical Error: Database connection failed. Please check your PostgreSQL setup.');
 }
 
 /* ── Session verification ─────────────────────────────────────────── */
@@ -82,9 +93,9 @@ try {
 
 $user_name  = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Admin';
 $user_role  = $_SESSION['role'] ?? 'admin';
-$canManageInventory     = checkAdminPermission('products.edit') || checkAdminPermission('stock.manage');
+$canManageInventory          = checkAdminPermission('products.edit') || checkAdminPermission('stock.manage');
 $productImageColumnAvailable = productImageColumnExists($pdo);
-$adminCsrfToken = generateCSRFToken();
+$adminCsrfToken              = generateCSRFToken();
 
 /* ── Notifications ────────────────────────────────────────────────── */
 $notifications = [];
@@ -110,20 +121,19 @@ $allowed_pages = ['dashboard','products','inventory','orders','customers','suppl
 if (!in_array($page, $allowed_pages)) $page = 'dashboard';
 
 /* ══════════════════════════════════════════════════════════════════════
-   POST — JSON action handler
-   Only runs when the request has an 'action' POST field.
-   Returns JSON and exits immediately — never falls through to HTML.
+   POST — action handler
+   Triggered for BOTH form-encoded and JSON bodies (thanks to the merge
+   above). Returns JSON and exits — never falls through to HTML output.
 ══════════════════════════════════════════════════════════════════════ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['action'])) {
 
-    // Discard any buffered output so JSON is clean
     ob_clean();
     header('Content-Type: application/json; charset=utf-8');
 
-    // CSRF guard — checks both POST body and X-CSRF-Token header
+    // CSRF guard — accept token from POST body OR X-CSRF-Token header
     $csrfTokenReceived = (string) (
         $_POST['csrf_token']
-        ?? $_SERVER['HTTP_X_CSRF_TOKEN']
+        ?? (isset($_SERVER['HTTP_X_CSRF_TOKEN']) ? $_SERVER['HTTP_X_CSRF_TOKEN'] : '')
         ?? ''
     );
     if (!validateCSRFToken($csrfTokenReceived)) {
@@ -132,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
-    $action = $_POST['action'];
+    $action = (string) $_POST['action'];
     $result = ['success' => false, 'message' => 'Unknown action'];
 
     try {
@@ -140,26 +150,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             /* ── Products ──────────────────────────────────────────── */
             case 'add_product': {
-                $name        = trim((string) ($_POST['name'] ?? ''));
-                $sku         = trim((string) ($_POST['sku'] ?? ''));
-                $description = trim((string) ($_POST['description'] ?? ''));
-                $categoryId  = filter_var($_POST['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                $unitPrice   = filter_var($_POST['unit_price']  ?? null, FILTER_VALIDATE_FLOAT);
-                $costPrice   = filter_var($_POST['cost_price']  ?? 0,    FILTER_VALIDATE_FLOAT);
-                $quantity    = filter_var($_POST['quantity']    ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-                $reorderLevel = filter_var($_POST['reorder_level'] ?? 10, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-                $hasImage    = isset($_FILES['image']) && (int)($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+                $name         = trim((string) ($_POST['name']         ?? ''));
+                $sku          = trim((string) ($_POST['sku']          ?? ''));
+                $description  = trim((string) ($_POST['description']  ?? ''));
+                $categoryId   = filter_var($_POST['category_id']  ?? null, FILTER_VALIDATE_INT,   ['options' => ['min_range' => 1]]);
+                $unitPrice    = filter_var($_POST['unit_price']   ?? null, FILTER_VALIDATE_FLOAT);
+                $costPrice    = filter_var($_POST['cost_price']   ?? 0,    FILTER_VALIDATE_FLOAT);
+                $quantity     = filter_var($_POST['quantity']     ?? null, FILTER_VALIDATE_INT,   ['options' => ['min_range' => 0]]);
+                $reorderLevel = filter_var($_POST['reorder_level'] ?? 10,  FILTER_VALIDATE_INT,   ['options' => ['min_range' => 0]]);
+                $hasImage     = isset($_FILES['image']) && (int) ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
                 if ($name === '' || $sku === '' || $categoryId === false || $unitPrice === false || $quantity === false) {
-                    $result = ['success' => false, 'message' => 'Please complete all required product fields.'];
-                    break;
+                    $result = ['success' => false, 'message' => 'Please complete all required product fields.']; break;
                 }
-                if ($costPrice  === false) $costPrice  = 0;
+                if ($costPrice    === false) $costPrice    = 0;
                 if ($reorderLevel === false) $reorderLevel = 10;
 
                 if ($hasImage && !$productImageColumnAvailable) {
-                    $result = ['success' => false, 'message' => 'Run /run_setup.php once to add the product image column, then delete the setup file.'];
-                    break;
+                    $result = ['success' => false, 'message' => 'Run /run_setup.php once to add the product image column, then delete it.']; break;
                 }
 
                 $imagePath = null;
@@ -176,33 +184,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $s = $pdo->prepare("INSERT INTO products (name,sku,description,category_id,unit_price,cost_price,quantity,reorder_level,is_active) VALUES (?,?,?,?,?,?,?,?,true)");
                     $s->execute([$name,$sku,$description,$categoryId,$unitPrice,$costPrice,$quantity,$reorderLevel]);
                 }
-                $result = ['success' => true, 'message' => 'Product added successfully', 'id' => (int)$pdo->lastInsertId()];
+                $result = ['success' => true, 'message' => 'Product added successfully', 'id' => (int) $pdo->lastInsertId()];
                 break;
             }
 
             case 'update_product': {
-                $productId   = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                $name        = trim((string) ($_POST['name'] ?? ''));
-                $sku         = trim((string) ($_POST['sku'] ?? ''));
-                $description = trim((string) ($_POST['description'] ?? ''));
-                $categoryId  = filter_var($_POST['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                $unitPrice   = filter_var($_POST['unit_price']  ?? null, FILTER_VALIDATE_FLOAT);
-                $costPrice   = filter_var($_POST['cost_price']  ?? 0,    FILTER_VALIDATE_FLOAT);
-                $quantity    = filter_var($_POST['quantity']    ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-                $reorderLevel = filter_var($_POST['reorder_level'] ?? 10, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-                $removeImage = isset($_POST['remove_image']) && $_POST['remove_image'] === '1';
-                $hasImage    = isset($_FILES['image']) && (int)($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+                $productId    = filter_var($_POST['id']           ?? null, FILTER_VALIDATE_INT,   ['options' => ['min_range' => 1]]);
+                $name         = trim((string) ($_POST['name']         ?? ''));
+                $sku          = trim((string) ($_POST['sku']          ?? ''));
+                $description  = trim((string) ($_POST['description']  ?? ''));
+                $categoryId   = filter_var($_POST['category_id']  ?? null, FILTER_VALIDATE_INT,   ['options' => ['min_range' => 1]]);
+                $unitPrice    = filter_var($_POST['unit_price']   ?? null, FILTER_VALIDATE_FLOAT);
+                $costPrice    = filter_var($_POST['cost_price']   ?? 0,    FILTER_VALIDATE_FLOAT);
+                $quantity     = filter_var($_POST['quantity']     ?? null, FILTER_VALIDATE_INT,   ['options' => ['min_range' => 0]]);
+                $reorderLevel = filter_var($_POST['reorder_level'] ?? 10,  FILTER_VALIDATE_INT,   ['options' => ['min_range' => 0]]);
+                $removeImage  = isset($_POST['remove_image']) && (string) $_POST['remove_image'] === '1';
+                $hasImage     = isset($_FILES['image']) && (int) ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
                 if ($productId === false || $name === '' || $sku === '' || $categoryId === false || $unitPrice === false || $quantity === false) {
-                    $result = ['success' => false, 'message' => 'Please complete all required product fields.'];
-                    break;
+                    $result = ['success' => false, 'message' => 'Please complete all required product fields.']; break;
                 }
-                if ($costPrice === false) $costPrice = 0;
+                if ($costPrice    === false) $costPrice    = 0;
                 if ($reorderLevel === false) $reorderLevel = 10;
 
                 if (($removeImage || $hasImage) && !$productImageColumnAvailable) {
-                    $result = ['success' => false, 'message' => 'Run /run_setup.php once to add the product image column.'];
-                    break;
+                    $result = ['success' => false, 'message' => 'Run /run_setup.php once to add the product image column.']; break;
                 }
 
                 $existingImagePath = null;
@@ -238,8 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'delete_product': {
                 $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 if ($id === false) { $result = ['success' => false, 'message' => 'Invalid product ID.']; break; }
-                $s = $pdo->prepare("UPDATE products SET is_active = false WHERE id = ?");
-                $s->execute([$id]);
+                $pdo->prepare("UPDATE products SET is_active = false WHERE id = ?")->execute([$id]);
                 $result = ['success' => true, 'message' => 'Product deleted successfully'];
                 break;
             }
@@ -247,13 +252,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             /* ── Stock ─────────────────────────────────────────────── */
             case 'adjust_stock': {
                 $product_id      = filter_var($_POST['product_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                $adjustment_type = $_POST['adjustment_type'] ?? '';
-                $quantity        = (int) ($_POST['quantity'] ?? 0);
-                $notes           = trim((string) ($_POST['notes'] ?? ''));
+                $adjustment_type = (string) ($_POST['adjustment_type'] ?? '');
+                $quantity        = (int)    ($_POST['quantity']        ?? 0);
+                $notes           = trim((string) ($_POST['notes']      ?? ''));
 
-                if ($product_id === false) { $result = ['success' => false, 'message' => 'Invalid product.']; break; }
-                if (!in_array($adjustment_type, ['add','remove','set'], true)) { $result = ['success' => false, 'message' => 'Invalid adjustment type.']; break; }
-                if ($quantity < 0) { $result = ['success' => false, 'message' => 'Quantity cannot be negative.']; break; }
+                if ($product_id === false)                                              { $result = ['success' => false, 'message' => 'Invalid product.']; break; }
+                if (!in_array($adjustment_type, ['add','remove','set'], true))          { $result = ['success' => false, 'message' => 'Invalid adjustment type.']; break; }
+                if ($quantity < 0)                                                      { $result = ['success' => false, 'message' => 'Quantity cannot be negative.']; break; }
 
                 $s = $pdo->prepare("SELECT quantity FROM products WHERE id = ?");
                 $s->execute([$product_id]);
@@ -261,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if (!$row) { $result = ['success' => false, 'message' => 'Product not found.']; break; }
 
                 $current_qty = (int) $row['quantity'];
-                $new_qty = match($adjustment_type) {
+                $new_qty = match ($adjustment_type) {
                     'add'    => $current_qty + $quantity,
                     'remove' => max(0, $current_qty - $quantity),
                     'set'    => $quantity,
@@ -269,7 +274,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 };
 
                 $pdo->prepare("UPDATE products SET quantity = ? WHERE id = ?")->execute([$new_qty, $product_id]);
-
                 $log_action = $adjustment_type === 'set' ? 'adjust' : $adjustment_type;
                 $pdo->prepare(
                     "INSERT INTO stock_logs (product_id,user_id,action,quantity_before,quantity_after,quantity_changed,notes)
@@ -284,20 +288,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'add_customer': {
                 $username = trim((string) ($_POST['username'] ?? ''));
                 $email    = trim((string) ($_POST['email']    ?? ''));
-                if (strtolower($username) === strtolower($email)) {
-                    $result = ['success' => false, 'message' => 'Username and email must be different.']; break;
-                }
-                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    $result = ['success' => false, 'message' => 'Invalid email address.']; break;
-                }
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $result = ['success' => false, 'message' => 'Invalid email address.']; break; }
+                if (strtolower($username) === strtolower($email)) { $result = ['success' => false, 'message' => 'Username and email must be different.']; break; }
                 $s = $pdo->prepare("INSERT INTO users (username,password,full_name,email,phone,customer_group,role) VALUES (?,?,?,?,?,?,'customer')");
                 $s->execute([
                     $username,
-                    password_hash($_POST['password'] ?? 'password123', PASSWORD_DEFAULT),
-                    $_POST['full_name'] ?? '',
+                    password_hash((string) ($_POST['password'] ?? 'password123'), PASSWORD_DEFAULT),
+                    (string) ($_POST['full_name']       ?? ''),
                     $email,
-                    $_POST['phone'] ?? '',
-                    $_POST['customer_group'] ?? 'regular',
+                    (string) ($_POST['phone']           ?? ''),
+                    (string) ($_POST['customer_group']  ?? 'regular'),
                 ]);
                 $result = ['success' => true, 'message' => 'Customer added successfully'];
                 break;
@@ -308,9 +308,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($id === false) { $result = ['success' => false, 'message' => 'Invalid customer ID.']; break; }
                 $updates = []; $params = [];
                 if (isset($_POST['full_name']))      { $updates[] = 'full_name = ?';      $params[] = $_POST['full_name']; }
-                if (isset($_POST['email']))          { $updates[] = 'email = ?';           $params[] = $_POST['email']; }
-                if (isset($_POST['phone']))          { $updates[] = 'phone = ?';           $params[] = $_POST['phone']; }
-                if (isset($_POST['customer_group'])) { $updates[] = 'customer_group = ?'; $params[] = $_POST['customer_group']; }
+                if (isset($_POST['email']))           { $updates[] = 'email = ?';          $params[] = $_POST['email']; }
+                if (isset($_POST['phone']))           { $updates[] = 'phone = ?';          $params[] = $_POST['phone']; }
+                if (isset($_POST['customer_group']))  { $updates[] = 'customer_group = ?'; $params[] = $_POST['customer_group']; }
                 if (!empty($updates)) {
                     $params[] = $id;
                     $pdo->prepare("UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
@@ -340,18 +340,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             case 'create_order': {
-                // Collision-safe order number using microsecond timestamp
-                $order_number = 'ORD-' . date('Y') . '-' . strtoupper(substr(base_convert((string)microtime(true)*1000, 10, 36), -6));
+                $order_number = 'ORD-' . date('Y') . '-' . strtoupper(substr(base_convert((string) (microtime(true) * 1000), 10, 36), -6));
                 $s = $pdo->prepare(
                     "INSERT INTO orders (order_number,customer_name,customer_email,shipping_address,notes,subtotal,tax_amount,total_amount,status,payment_status)
                      VALUES (?,?,?,?,?,0,0,0,'pending','pending')"
                 );
                 $s->execute([
                     $order_number,
-                    $_POST['customer_name']    ?? '',
-                    $_POST['customer_email']   ?? '',
-                    $_POST['shipping_address'] ?? '',
-                    $_POST['notes']            ?? '',
+                    (string) ($_POST['customer_name']    ?? ''),
+                    (string) ($_POST['customer_email']   ?? ''),
+                    (string) ($_POST['shipping_address'] ?? ''),
+                    (string) ($_POST['notes']            ?? ''),
                 ]);
                 $result = ['success' => true, 'message' => 'Order created successfully', 'order_number' => $order_number];
                 break;
@@ -361,12 +360,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'add_supplier': {
                 $s = $pdo->prepare("INSERT INTO suppliers (company_name,contact_person,email,phone,address,city) VALUES (?,?,?,?,?,?)");
                 $s->execute([
-                    $_POST['company_name']    ?? '',
-                    $_POST['contact_person']  ?? '',
-                    $_POST['email']           ?? '',
-                    $_POST['phone']           ?? '',
-                    $_POST['address']         ?? '',
-                    $_POST['city']            ?? '',
+                    (string) ($_POST['company_name']   ?? ''),
+                    (string) ($_POST['contact_person'] ?? ''),
+                    (string) ($_POST['email']          ?? ''),
+                    (string) ($_POST['phone']          ?? ''),
+                    (string) ($_POST['address']        ?? ''),
+                    (string) ($_POST['city']           ?? ''),
                 ]);
                 $result = ['success' => true, 'message' => 'Supplier added successfully'];
                 break;
@@ -376,7 +375,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 if ($id === false) { $result = ['success' => false, 'message' => 'Invalid supplier ID.']; break; }
                 $s = $pdo->prepare("UPDATE suppliers SET company_name=?,contact_person=?,email=?,phone=?,address=?,city=? WHERE id=?");
-                $s->execute([$_POST['company_name']??'',$_POST['contact_person']??'',$_POST['email']??'',$_POST['phone']??'',$_POST['address']??'',$_POST['city']??'',$id]);
+                $s->execute([
+                    (string) ($_POST['company_name']   ?? ''),
+                    (string) ($_POST['contact_person'] ?? ''),
+                    (string) ($_POST['email']          ?? ''),
+                    (string) ($_POST['phone']          ?? ''),
+                    (string) ($_POST['address']        ?? ''),
+                    (string) ($_POST['city']           ?? ''),
+                    $id,
+                ]);
                 $result = ['success' => true, 'message' => 'Supplier updated successfully'];
                 break;
             }
@@ -389,14 +396,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 break;
             }
 
-            /* ── Read actions (GET-via-POST for CSRF-protected reads) ── */
+            /* ── Read actions (POST for CSRF protection) ───────────── */
             case 'get_customer_details': {
                 $customerId = (int) ($_POST['id'] ?? 0);
                 $s = $pdo->prepare("SELECT id,username,email,full_name,phone,customer_group,created_at FROM users WHERE id=? AND role='customer' LIMIT 1");
                 $s->execute([$customerId]);
                 $customer = $s->fetch(PDO::FETCH_ASSOC);
                 if (!$customer) { $result = ['success' => false, 'message' => 'Customer not found']; break; }
-                $s = $pdo->prepare("SELECT id,order_number,status,payment_status,total_amount,COALESCE(order_date,created_at) AS order_date FROM orders WHERE user_id=? ORDER BY COALESCE(order_date,created_at) DESC LIMIT 10");
+                $s = $pdo->prepare(
+                    "SELECT id,order_number,status,payment_status,total_amount,
+                            COALESCE(order_date,created_at) AS order_date
+                     FROM orders WHERE user_id=?
+                     ORDER BY COALESCE(order_date,created_at) DESC LIMIT 10"
+                );
                 $s->execute([$customerId]);
                 $customer['orders'] = $s->fetchAll(PDO::FETCH_ASSOC);
                 $result = ['success' => true, 'data' => ['customer' => $customer]];
@@ -405,7 +417,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             case 'get_order_details': {
                 $orderId = (int) ($_POST['id'] ?? $_POST['order_id'] ?? 0);
-                $s = $pdo->prepare("SELECT o.*,u.full_name AS customer_name,u.email AS customer_email,u.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=? LIMIT 1");
+                $s = $pdo->prepare(
+                    "SELECT o.*,u.full_name AS customer_name,u.email AS customer_email,u.phone AS customer_phone
+                     FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=? LIMIT 1"
+                );
                 $s->execute([$orderId]);
                 $order = $s->fetch(PDO::FETCH_ASSOC);
                 if (!$order) { $result = ['success' => false, 'message' => 'Order not found']; break; }
@@ -425,7 +440,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $s->execute([$productId]);
                 $product = $s->fetch(PDO::FETCH_ASSOC);
                 if (!$product) { $result = ['success' => false, 'message' => 'Product not found']; break; }
-                $s = $pdo->prepare("SELECT sl.*,COALESCE(u.full_name,u.username,'System') AS user_name FROM stock_logs sl LEFT JOIN users u ON u.id=sl.user_id WHERE sl.product_id=? ORDER BY sl.created_at DESC LIMIT 25");
+                $s = $pdo->prepare(
+                    "SELECT sl.*,COALESCE(u.full_name,u.username,'System') AS user_name
+                     FROM stock_logs sl LEFT JOIN users u ON u.id=sl.user_id
+                     WHERE sl.product_id=? ORDER BY sl.created_at DESC LIMIT 25"
+                );
                 $s->execute([$productId]);
                 $result = ['success' => true, 'data' => ['product' => $product, 'history' => $s->fetchAll(PDO::FETCH_ASSOC)]];
                 break;
@@ -471,7 +490,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             case 'update_user': {
-                $userId        = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                $userId        = filter_var($_POST['id']        ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 $username      = trim((string) ($_POST['username']  ?? ''));
                 $email         = trim((string) ($_POST['email']     ?? ''));
                 $fullName      = trim((string) ($_POST['full_name'] ?? ''));
@@ -538,12 +557,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             /* ── Settings ──────────────────────────────────────────── */
             case 'save_settings': {
                 $savedSettings = saveAppSettings($pdo, [
-                    'store_name'        => $_POST['store_name']        ?? '',
-                    'store_email'       => $_POST['store_email']       ?? '',
-                    'currency'          => $_POST['currency']          ?? '',
-                    'timezone'          => $_POST['timezone']          ?? '',
-                    'low_stock_threshold' => $_POST['low_stock_threshold'] ?? '',
-                    'date_format'       => $_POST['date_format']       ?? 'Y-m-d',
+                    'store_name'          => (string) ($_POST['store_name']          ?? ''),
+                    'store_email'         => (string) ($_POST['store_email']         ?? ''),
+                    'currency'            => (string) ($_POST['currency']            ?? ''),
+                    'timezone'            => (string) ($_POST['timezone']            ?? ''),
+                    'low_stock_threshold' => (string) ($_POST['low_stock_threshold'] ?? ''),
+                    'date_format'         => (string) ($_POST['date_format']         ?? 'Y-m-d'),
                 ]);
                 $result = ['success' => true, 'message' => 'General settings saved successfully', 'settings' => $savedSettings];
                 break;
@@ -551,21 +570,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             case 'save_notification_settings': {
                 $savedSettings = saveAppSettings($pdo, [
-                    'notify_new_orders'          => $_POST['notify_new_orders']          ?? '0',
-                    'notify_low_stock'           => $_POST['notify_low_stock']           ?? '0',
-                    'notify_daily_sales_report'  => $_POST['notify_daily_sales_report']  ?? '0',
-                    'notify_weekly_summary'      => $_POST['notify_weekly_summary']      ?? '0',
-                    'notify_order_status_changes'=> $_POST['notify_order_status_changes'] ?? '0',
-                    'notify_inventory_updates'   => $_POST['notify_inventory_updates']   ?? '0',
-                    'notify_user_activity'       => $_POST['notify_user_activity']       ?? '0',
+                    'notify_new_orders'           => (string) ($_POST['notify_new_orders']           ?? '0'),
+                    'notify_low_stock'            => (string) ($_POST['notify_low_stock']            ?? '0'),
+                    'notify_daily_sales_report'   => (string) ($_POST['notify_daily_sales_report']   ?? '0'),
+                    'notify_weekly_summary'       => (string) ($_POST['notify_weekly_summary']       ?? '0'),
+                    'notify_order_status_changes' => (string) ($_POST['notify_order_status_changes'] ?? '0'),
+                    'notify_inventory_updates'    => (string) ($_POST['notify_inventory_updates']    ?? '0'),
+                    'notify_user_activity'        => (string) ($_POST['notify_user_activity']        ?? '0'),
                 ]);
                 $result = ['success' => true, 'message' => 'Notification preferences saved successfully', 'settings' => $savedSettings];
                 break;
             }
 
             case 'create_settings_backup': {
-                $timestamp = date('c');
-                saveAppSettings($pdo, ['last_backup_at' => $timestamp]);
+                saveAppSettings($pdo, ['last_backup_at' => date('c')]);
                 $backupPayload = createSettingsBackupPayload($pdo);
                 $filename      = 'stockflow-settings-backup-' . date('Y-m-d-His') . '.json';
                 $result = ['success' => true, 'message' => 'Settings backup created successfully', 'filename' => $filename, 'backup' => $backupPayload];
@@ -573,7 +591,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             case 'restore_settings_backup': {
-                if (!isset($_FILES['backup_file']) || (int)($_FILES['backup_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                if (!isset($_FILES['backup_file']) || (int) ($_FILES['backup_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                     $result = ['success' => false, 'message' => 'Please choose a valid backup file to restore.']; break;
                 }
                 $backupJson    = file_get_contents($_FILES['backup_file']['tmp_name']);
@@ -589,7 +607,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
     } catch (PDOException $e) {
-        $msg = $e->getMessage();
+        $msg      = $e->getMessage();
         $friendly = 'Database error occurred while processing your request.';
         if ($e->getCode() === '23505' || stripos($msg, 'duplicate key value') !== false) {
             if      (stripos($msg, 'users_username_key') !== false) $friendly = 'Username already exists.';
@@ -597,11 +615,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             elseif  (stripos($msg, 'products_sku_key')   !== false) $friendly = 'SKU already exists.';
             else $friendly = 'A record with these details already exists.';
         }
-        error_log('Admin action PDOException [' . $action . ']: ' . $msg);
+        error_log('Admin PDOException [' . $action . ']: ' . $msg);
         $result = ['success' => false, 'message' => $friendly];
 
     } catch (Throwable $e) {
-        error_log('Admin action Throwable [' . $action . ']: ' . $e->getMessage());
+        error_log('Admin Throwable [' . $action . ']: ' . $e->getMessage());
         $result = ['success' => false, 'message' => trim($e->getMessage()) !== '' ? $e->getMessage() : 'Unable to complete the requested action.'];
     }
 
@@ -621,7 +639,6 @@ $page_titles = [
 ];
 $page_title = $page_titles[$page] ?? ucfirst($page);
 
-// Flush output buffer and start sending HTML
 ob_end_flush();
 ?>
 <!DOCTYPE html>
@@ -633,25 +650,21 @@ ob_end_flush();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-    /* ── CSRF token (set before any module scripts run) ── */
+    /* ── CSRF token injected before any module scripts run ── */
     window.ADMIN_CSRF_TOKEN = <?= json_encode($adminCsrfToken) ?>;
 
     /* ── Patch window.fetch to auto-inject CSRF on every POST ── */
     (function () {
         var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
         if (!nativeFetch) return;
-
         window.fetch = function (input, init) {
             var options = Object.assign({}, init || {});
             var method  = String(options.method || 'GET').toUpperCase();
-
             if (method === 'POST' && window.ADMIN_CSRF_TOKEN) {
                 if (options.body instanceof FormData || options.body instanceof URLSearchParams) {
-                    if (!options.body.has('csrf_token')) {
+                    if (!options.body.has('csrf_token'))
                         options.body.append('csrf_token', window.ADMIN_CSRF_TOKEN);
-                    }
                 } else if (typeof options.body === 'string') {
-                    /* Try JSON first, fall back to query-string */
                     try {
                         var parsed = JSON.parse(options.body);
                         if (typeof parsed === 'object' && parsed !== null && !parsed.csrf_token) {
@@ -659,18 +672,13 @@ ob_end_flush();
                             options.body = JSON.stringify(parsed);
                         }
                     } catch (_) {
-                        var sep = options.body.length ? '&' : '';
-                        options.body += sep + 'csrf_token=' + encodeURIComponent(window.ADMIN_CSRF_TOKEN);
+                        options.body += (options.body.length ? '&' : '') + 'csrf_token=' + encodeURIComponent(window.ADMIN_CSRF_TOKEN);
                     }
                 } else if (!options.body) {
                     options.body = new URLSearchParams({ csrf_token: window.ADMIN_CSRF_TOKEN });
                 }
-
-                options.headers = Object.assign({}, options.headers || {}, {
-                    'X-CSRF-Token': window.ADMIN_CSRF_TOKEN
-                });
+                options.headers = Object.assign({}, options.headers || {}, { 'X-CSRF-Token': window.ADMIN_CSRF_TOKEN });
             }
-
             return nativeFetch(input, options);
         };
     })();
@@ -716,7 +724,6 @@ ob_end_flush();
         --warning-bg:  rgba(245,158,11,.12);
         --danger-bg:   rgba(244,63,94,.12);
         --info-bg:     rgba(34,211,238,.12);
-        /* Legacy compat */
         --primary:        var(--accent);
         --secondary:      var(--accent-4);
         --bg-card:        var(--surface);
@@ -809,14 +816,13 @@ ob_end_flush();
     input, select, textarea { font-family: inherit; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
-    /* ── Layout ── */
     .app-container { display: flex; min-height: 100vh; }
 
     /* ── Sidebar ── */
     .sidebar { width: var(--sidebar-w); background: var(--bg-2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: width .3s cubic-bezier(.4,0,.2,1), transform .3s cubic-bezier(.4,0,.2,1); overflow: hidden; }
     .sidebar.collapsed { width: var(--sidebar-collapsed); }
     .sidebar::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 200px; background: radial-gradient(ellipse at 50% -20%, var(--accent-glow) 0%, transparent 70%); pointer-events: none; }
-    .sidebar-header { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: var(--header-h); border-bottom: 1px solid var(--border); flex-shrink: 0; position: relative; }
+    .sidebar-header { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: var(--header-h); border-bottom: 1px solid var(--border); flex-shrink: 0; }
     .sidebar-logo { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%); border-radius: 10px; display: grid; place-items: center; font-size: 17px; color: #fff; flex-shrink: 0; box-shadow: 0 0 20px var(--accent-glow); }
     .sidebar-brand { font-size: 1.1rem; font-weight: 700; letter-spacing: -.02em; color: var(--text); white-space: nowrap; opacity: 1; transition: opacity .2s; }
     .sidebar.collapsed .sidebar-brand { opacity: 0; pointer-events: none; }
@@ -986,8 +992,8 @@ ob_end_flush();
     /* ── Action icons ── */
     .action-icons { display: flex; gap: 4px; }
     .action-icon { width: 30px; height: 30px; border: none; background: transparent; cursor: pointer; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); transition: all .2s; }
-    .action-icon:hover       { background: var(--surface-2); color: var(--accent); }
-    .action-icon.delete:hover{ background: var(--danger-bg); color: var(--danger); }
+    .action-icon:hover        { background: var(--surface-2); color: var(--accent); }
+    .action-icon.delete:hover { background: var(--danger-bg); color: var(--danger); }
     .action-icon i { font-size: 13px; }
 
     /* ── Modals ── */
@@ -1114,15 +1120,15 @@ ob_end_flush();
                 <?php
                 $nav = [
                     'dashboard' => ['fas fa-house',        'Dashboard'],
-                    'products'  => ['fas fa-box',           'Products'],
-                    'inventory' => ['fas fa-warehouse',     'Inventory'],
-                    'orders'    => ['fas fa-shopping-cart', 'Orders'],
-                    'customers' => ['fas fa-users',         'Customers'],
-                    'suppliers' => ['fas fa-truck',         'Suppliers'],
+                    'products'  => ['fas fa-box',          'Products'],
+                    'inventory' => ['fas fa-warehouse',    'Inventory'],
+                    'orders'    => ['fas fa-shopping-cart','Orders'],
+                    'customers' => ['fas fa-users',        'Customers'],
+                    'suppliers' => ['fas fa-truck',        'Suppliers'],
                     '_divider'  => null,
-                    'reports'   => ['fas fa-chart-bar',     'Reports'],
-                    'settings'  => ['fas fa-cog',           'Settings'],
-                    'test'      => ['fas fa-stethoscope',   'Diagnostics'],
+                    'reports'   => ['fas fa-chart-bar',   'Reports'],
+                    'settings'  => ['fas fa-cog',         'Settings'],
+                    'test'      => ['fas fa-stethoscope', 'Diagnostics'],
                 ];
                 foreach ($nav as $key => $info):
                     if ($key === '_divider'): ?>
@@ -1240,10 +1246,10 @@ ob_end_flush();
 /* ════════════════════════════════════════════════
    THEME
 ════════════════════════════════════════════════ */
-const storageKey   = 'admin-theme';
-const root         = document.documentElement;
-const themeToggle  = document.getElementById('themeToggle');
-const systemTheme  = window.matchMedia('(prefers-color-scheme: dark)');
+const storageKey  = 'admin-theme';
+const root        = document.documentElement;
+const themeToggle = document.getElementById('themeToggle');
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
 
 function getSavedTheme() {
     const t = localStorage.getItem(storageKey);
@@ -1256,7 +1262,6 @@ function applyTheme(theme) {
     themeToggle?.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
 }
 applyTheme(getSavedTheme() || (systemTheme.matches ? 'dark' : 'light'));
-
 themeToggle?.addEventListener('click', () => {
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     localStorage.setItem(storageKey, next);
@@ -1273,23 +1278,20 @@ typeof systemTheme.addEventListener === 'function'
 function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('collapsed');
 }
-
 document.getElementById('mobileMenuBtn')?.addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('mobile-open');
 });
-
 document.addEventListener('click', e => {
     const sidebar = document.getElementById('sidebar');
     const btn     = document.getElementById('mobileMenuBtn');
     if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
-        if (!sidebar.contains(e.target) && e.target !== btn && !btn?.contains(e.target)) {
+        if (!sidebar.contains(e.target) && e.target !== btn && !btn?.contains(e.target))
             sidebar.classList.remove('mobile-open');
-        }
     }
 });
 
 /* ════════════════════════════════════════════════
-   TOAST — global helper used by module files
+   TOAST
 ════════════════════════════════════════════════ */
 function showNotification(message, type) {
     type = type || 'success';
@@ -1309,7 +1311,7 @@ window.showNotification = showNotification;
 window.hideNotification = hideNotification;
 
 /* ════════════════════════════════════════════════
-   MODAL — global helpers exposed for module files
+   MODALS
 ════════════════════════════════════════════════ */
 function showModal(id) {
     const el = document.getElementById(id);
@@ -1356,35 +1358,24 @@ document.getElementById('globalSearch')?.addEventListener('input', function () {
 ════════════════════════════════════════════════ */
 const notifBtn  = document.getElementById('notificationBtn');
 const notifDrop = document.getElementById('notificationDropdown');
-notifBtn?.addEventListener('click', e => {
-    e.stopPropagation();
-    notifDrop?.classList.toggle('active');
-});
+notifBtn?.addEventListener('click', e => { e.stopPropagation(); notifDrop?.classList.toggle('active'); });
 document.addEventListener('click', () => notifDrop?.classList.remove('active'));
 
 /* ════════════════════════════════════════════════
-   GLOBAL FETCH ERROR HANDLER
-   Wraps the fetch override already applied in <head>
-   so network failures always show a user-facing toast.
+   adminFetch — wraps fetch, shows toast on error
 ════════════════════════════════════════════════ */
 window.adminFetch = function (url, options) {
     return fetch(url, options)
-        .then(function (res) {
-            // Server returned non-2xx but we still get a response body
-            return res.json().then(function (data) {
-                if (!data.success && data.message) {
-                    showNotification(data.message, 'error');
-                }
-                return data;
-            });
-        })
-        .catch(function (err) {
+        .then(res => res.json().then(data => {
+            if (!data.success && data.message) showNotification(data.message, 'error');
+            return data;
+        }))
+        .catch(err => {
             console.error('adminFetch error:', err);
             showNotification('Network error — please check your connection and try again.', 'error');
             return { success: false, message: err.message };
         });
 };
-window.adminFetch = window.adminFetch;
 </script>
 </body>
 </html>
