@@ -12,7 +12,11 @@
  *   unchanged for BOTH form-encoded AND JSON requests.
  */
 
-ob_start();
+ob_clean();
+// TEMP DEBUG - remove after fixing
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // keep off, log instead
+ini_set('log_errors', 1);
 
 /* ══════════════════════════════════════════════════════════════════════
    JSON BODY FIX — must be before any $_POST read
