@@ -1,47 +1,93 @@
 <?php
-// Global error handling must be first
-require_once __DIR__ . '/error_handler.php';
+/**
+ * index.php — Entry point
+ *
+ * Works locally (XAMPP / WAMP / Laravel Herd) AND on any production host
+ * (Render, Railway, Fly.io, shared hosting, VPS).
+ *
+ * Key fixes vs old version:
+ *  1. session_start() guarded so luxestore.php can't start a second session.
+ *  2. DB failure shows a styled error page instead of a blank screen.
+ *  3. error_handler.php is optional — won't crash if the file is missing.
+ *  4. luxestore.php session_start() is also guarded (see luxestore.php fix).
+ */
 
-// Database connection (sets global $pdo)
+// ── Error handling (optional file) ──────────────────────────────────────────
+if (file_exists(__DIR__ . '/error_handler.php')) {
+    require_once __DIR__ . '/error_handler.php';
+} else {
+    // Minimal safe defaults when error_handler.php is absent
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
+
+// ── Session (exactly once, before anything else reads $_SESSION) ─────────────
+if (session_status() === PHP_SESSION_NONE) {
+    // Secure session cookie settings
+    $cookieParams = [
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+    session_set_cookie_params($cookieParams);
+    session_start();
+}
+
+// ── Database connection ──────────────────────────────────────────────────────
 require_once __DIR__ . '/db_connect.php';
 
-// Check if database is available before proceeding
+// ── DB failure: show friendly error, never a blank page ─────────────────────
 if (!isDBConnected()) {
     http_response_code(503);
+    $isLocal = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)
+            || php_uname('n') === gethostname();
     ?>
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Database Connection Error</title>
+        <title>LuxeStore — Temporarily Unavailable</title>
         <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-            .error-container { background: white; padding: 3rem; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 600px; }
-            .error-icon { font-size: 3rem; margin-bottom: 1.5rem; }
-            h1 { color: #d63031; margin-bottom: 1rem; font-size: 1.8rem; }
-            p { color: #555; line-height: 1.8; margin-bottom: 1rem; }
-            .error-details { background: #f8f9fa; border-left: 4px solid #d63031; padding: 1rem; margin: 1.5rem 0; border-radius: 4px; font-family: monospace; font-size: 0.9rem; color: #666; }
-            .status-badge { display: inline-block; background: #ffc107; color: #000; padding: 0.5rem 1rem; border-radius: 20px; margin-bottom: 1.5rem; font-weight: bold; }
+            *{margin:0;padding:0;box-sizing:border-box}
+            body{font-family:system-ui,sans-serif;background:#0e0c09;color:#f5f0e8;
+                 display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+            .box{max-width:520px;width:100%;text-align:center}
+            .logo{font-size:2.5rem;letter-spacing:.1em;color:#c9a84c;margin-bottom:2rem;
+                  font-family:Georgia,serif;font-style:italic}
+            h1{font-size:1.4rem;margin-bottom:1rem;color:#f5f0e8}
+            p{color:rgba(245,240,232,.6);line-height:1.7;margin-bottom:1rem;font-size:.95rem}
+            .badge{display:inline-block;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);
+                   color:#c9a84c;padding:.4rem 1rem;border-radius:4px;font-size:.8rem;
+                   letter-spacing:.1em;text-transform:uppercase;margin-bottom:1.5rem}
+            .debug{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+                   border-radius:6px;padding:1rem;margin-top:1.5rem;font-family:monospace;
+                   font-size:.8rem;color:rgba(245,240,232,.5);text-align:left}
+            .debug strong{color:#c9a84c}
         </style>
     </head>
     <body>
-        <div class="error-container">
-            <div class="error-icon">🚨</div>
-            <span class="status-badge">System Maintenance</span>
-            <h1>Service Unavailable</h1>
-            <p>The inventory system is temporarily unavailable due to a database connection issue.</p>
+        <div class="box">
+            <div class="logo">LuxeStore</div>
+            <span class="badge">Temporarily Unavailable</span>
+            <h1>We'll be right back</h1>
             <p>Our team has been notified and is working on a fix. Please try again in a few moments.</p>
-            <div class="error-details">
-                <strong>Technical Details:</strong><br>
-                Database: PostgreSQL<br>
-                Status: Connection Failed<br>
-                Check: /health for more information
+            <?php if ($isLocal): ?>
+            <div class="debug">
+                <strong>Local dev checklist:</strong><br><br>
+                1. Is PostgreSQL running? (Check XAMPP / pgAdmin / brew services)<br>
+                2. Does the database exist? <code>CREATE DATABASE "Inventory_DB"</code><br>
+                3. Are your credentials set?<br>
+                &nbsp;&nbsp;&nbsp;DB_HOST=localhost &nbsp;DB_PORT=5432<br>
+                &nbsp;&nbsp;&nbsp;DB_NAME=Inventory_DB &nbsp;DB_USER=postgres<br>
+                &nbsp;&nbsp;&nbsp;DB_PASSWORD=yourpassword<br><br>
+                Set these in a <code>.env</code> file or in your system environment.<br><br>
+                <strong>Error:</strong> <?= htmlspecialchars($db_connection_error ?? 'Unknown') ?>
             </div>
-            <p style="color: #999; font-size: 0.9rem; margin-top: 2rem;">
-                Error ID: <?php echo date('YmdHis') . '-' . substr(md5(microtime()), 0, 8); ?>
-            </p>
+            <?php endif; ?>
         </div>
     </body>
     </html>
@@ -49,8 +95,10 @@ if (!isDBConnected()) {
     exit;
 }
 
-// Session management (requires database to already be set up)
-require_once __DIR__ . '/includes/session.php';
+// ── Session helpers (included by session.php — but guard in case it's absent) 
+if (file_exists(__DIR__ . '/includes/session.php')) {
+    require_once __DIR__ . '/includes/session.php';
+}
 
-// Main application logic
+// ── Landing page ─────────────────────────────────────────────────────────────
 require __DIR__ . '/luxestore.php';
