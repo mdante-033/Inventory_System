@@ -33,13 +33,13 @@ if (!$pdo instanceof PDO) {
     exit;
 }
 
-$rateLimiter = new RateLimiter($pdo);
 $userId = (int)($_SESSION['user_id'] ?? 0);
+$rateLimiter = new RateLimiter($pdo, 'mpesa:' . $userId);
 
 // 5. Apply Rate Limiting safely (Max 5 requests per 10 minutes)
-// 6. Define the limit parameters (5 attempts per 600 seconds / 10 minutes)
+// 6. Define the limit parameters (5 attempts per 10 minutes)
 $maxAttempts = 5;
-$timeWindow = 600;
+$timeWindow = 10;
 
 // 7. Check if the user is currently rate limited
 if ($rateLimiter->isLimited($maxAttempts, $timeWindow)) {

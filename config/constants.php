@@ -89,7 +89,7 @@ if (!defined('REMEMBER_ME_DAYS')) define('REMEMBER_ME_DAYS', 30);
 
 // ── Security ──────────────────────────────────────────────────────────────
 if (!defined('HASH_ALGORITHM'))    define('HASH_ALGORITHM',    'bcrypt');
-if (!defined('MIN_PASSWORD_LENGTH'))define('MIN_PASSWORD_LENGTH', 6);
+if (!defined('MIN_PASSWORD_LENGTH'))define('MIN_PASSWORD_LENGTH', 8);
 if (!defined('MAX_LOGIN_ATTEMPTS'))define('MAX_LOGIN_ATTEMPTS', 5);
 if (!defined('LOCKOUT_DURATION'))  define('LOCKOUT_DURATION',  900); // 15 minutes
 

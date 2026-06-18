@@ -28,7 +28,7 @@ class RateLimiter {
                 FROM login_attempts
                 WHERE identifier = ?
                 AND ip_address = ?
-                AND created_at > NOW() - INTERVAL ? MINUTE
+                AND created_at > NOW() - (? * INTERVAL \'1 minute\')
                 AND success = FALSE
             ');
 
@@ -55,7 +55,7 @@ class RateLimiter {
                 FROM login_attempts
                 WHERE identifier = ?
                 AND ip_address = ?
-                AND created_at > NOW() - INTERVAL ? MINUTE
+                AND created_at > NOW() - (? * INTERVAL \'1 minute\')
                 AND success = FALSE
             ');
 
@@ -124,14 +124,14 @@ class RateLimiter {
                 FROM login_attempts
                 WHERE identifier = ?
                 AND ip_address = ?
-                AND created_at > NOW() - INTERVAL ? MINUTE
+                AND created_at > NOW() - (? * INTERVAL \'1 minute\')
                 AND success = FALSE
             ');
 
             $stmt->execute([$this->identifier, $this->ipAddress, $windowMinutes]);
             $result = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!$result['first_attempt']) {
+            if (!$result || empty($result['first_attempt'])) {
                 return null;
             }
 
@@ -159,7 +159,7 @@ class RateLimiter {
                 FROM api_requests
                 WHERE api_key = ?
                 AND ip_address = ?
-                AND created_at > NOW() - INTERVAL 1 MINUTE
+                AND created_at > NOW() - INTERVAL \'1 minute\'
             ');
 
             $stmt->execute([$apiKey, $this->ipAddress]);
@@ -194,8 +194,8 @@ class RateLimiter {
     public static function cleanup(\PDO $pdo): void {
         try {
             // Delete records older than 30 days
-            $pdo->exec('DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL 30 DAY');
-            $pdo->exec('DELETE FROM api_requests WHERE created_at < NOW() - INTERVAL 30 DAY');
+            $pdo->exec("DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL '30 days'");
+            $pdo->exec("DELETE FROM api_requests WHERE created_at < NOW() - INTERVAL '30 days'");
         } catch (\PDOException $e) {
             error_log('RateLimiter cleanup error: ' . $e->getMessage());
         }

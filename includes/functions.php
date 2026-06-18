@@ -168,13 +168,22 @@ function isValidKenyanPhone(string $phone): bool {
  * Get user IP address
  */
 function getUserIP() {
-    if (isset($_SERVER['HTTP_CLIENT_IP'])) {
-        return $_SERVER['HTTP_CLIENT_IP'];
-    } elseif (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        return $_SERVER['HTTP_X_FORWARDED_FOR'];
-    } else {
-        return $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+    $remoteAddress = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+    $trustProxyHeaders = filter_var(getenv('TRUST_PROXY_HEADERS') ?: false, FILTER_VALIDATE_BOOLEAN);
+
+    if ($trustProxyHeaders && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwardedIps = array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']));
+        $candidate = $forwardedIps[0] ?? '';
+        if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+            return $candidate;
+        }
     }
+
+    if ($trustProxyHeaders && !empty($_SERVER['HTTP_CLIENT_IP']) && filter_var($_SERVER['HTTP_CLIENT_IP'], FILTER_VALIDATE_IP)) {
+        return $_SERVER['HTTP_CLIENT_IP'];
+    }
+
+    return $remoteAddress;
 }
 
 /**
@@ -248,7 +257,10 @@ function getFlashMessage(string $type): ?string {
 function displayFlashMessages() {
     if (isset($_SESSION['flash'])) {
         foreach ($_SESSION['flash'] as $type => $message) {
-            echo "<div class='alert alert-$type'>$message</div>";
+            $safeType = preg_replace('/[^a-z0-9_-]/i', '', (string) $type) ?: 'info';
+            echo "<div class='alert alert-" . htmlspecialchars($safeType, ENT_QUOTES, 'UTF-8') . "'>"
+                . htmlspecialchars((string) $message, ENT_QUOTES, 'UTF-8')
+                . "</div>";
         }
         unset($_SESSION['flash']);
     }

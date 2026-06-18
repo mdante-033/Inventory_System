@@ -7,31 +7,51 @@ use App\Exceptions\ValidationException;
 
 class ProductVariant
 {
-    private int $id;
-    private AbstractProduct $product;
-    private string $barcode;
-    private Color $color;
-    private int $quantity;
+    private ?int $id = null;
+    private ?int $productId = null;
+    private ?AbstractProduct $product = null;
+    private string $barcode = '';
+    private ?Color $color = null;
+    private int $quantity = 0;
     private int $reservedQuantity = 0;
+    private \DateTime $createdAt;
+    private \DateTime $updatedAt;
     private \DateTime $lastRestocked;
     private int $version = 0; // For optimistic locking
     const MAX_QUANTITY = 10000;
+
     public function __construct(
-        AbstractProduct $product,
-        string $barcode,
-        Color $color,
+        ?AbstractProduct $product = null,
+        string $barcode = '',
+        Color|string|null $color = null,
         int $initialQuantity = 0
     ) {
-        $this->product = $product;
-        $this->setBarcode($barcode);
-        $this->color = $color;
+        if ($product !== null) {
+            $this->setProduct($product);
+        }
+
+        if ($barcode !== '') {
+            $this->setBarcode($barcode);
+        }
+
+        if ($color !== null) {
+            $this->setColor($color);
+        }
+
         $this->setQuantity($initialQuantity);
+        $this->createdAt = new \DateTime();
+        $this->updatedAt = new \DateTime();
         $this->lastRestocked = new \DateTime();
     }
     
     // Strict barcode validation
-    public function setBarcode(string $barcode): void
+    public function setBarcode(string $barcode): self
     {
+        if ($barcode === '') {
+            $this->barcode = '';
+            return $this;
+        }
+
         if (!preg_match('/^[0-9]{12,14}$/', $barcode)) {
             throw new ValidationException(
                 'Barcode must be 12-14 numeric digits (EAN/UPC format)'
@@ -44,6 +64,7 @@ class ProductVariant
         }
         
         $this->barcode = $barcode;
+        return $this;
     }
     
     private function isValidEAN13(string $barcode): bool
@@ -61,7 +82,7 @@ class ProductVariant
     }
     
     // Stock management with business rules
-    public function setQuantity(int $quantity): void
+    public function setQuantity(int $quantity): self
     {
         if ($quantity < 0) {
             throw new ValidationException('Stock quantity cannot be negative');
@@ -73,6 +94,7 @@ class ProductVariant
         
         $this->quantity = $quantity;
         $this->version++; // Increment version for optimistic locking
+        return $this;
     }
     
     public function adjustQuantity(int $delta, string $reason): void
@@ -95,6 +117,7 @@ class ProductVariant
         
         if ($delta > 0) {
             $this->lastRestocked = new \DateTime();
+            $this->updatedAt = $this->lastRestocked;
         }
         
         $this->version++;
@@ -138,36 +161,83 @@ class ProductVariant
     
     public function isLowStock(): bool
     {
+        if ($this->product === null) {
+            return false;
+        }
+
         return $this->getAvailableStock() <= $this->product->getSafetyStock();
     }
 
     // Getters
-    public function getId(): int { return $this->id; }
-    public function getProduct(): AbstractProduct { return $this->product; }
+    public function getId(): int { return $this->id ?? 0; }
+    public function getProduct(): ?AbstractProduct { return $this->product; }
     public function getBarcode(): string { return $this->barcode; }
-    public function getColor(): Color { return $this->color; }
+    public function getColor(): ?Color { return $this->color; }
     public function getQuantity(): int { return $this->quantity; }
     public function getReservedQuantity(): int { return $this->reservedQuantity; }
     public function getLastRestocked(): \DateTime { return $this->lastRestocked; }
     public function getVersion(): int { return $this->version; }
 
-    public function getProductId(): int
+    public function setId(?int $id): self
     {
-        return $this->product->getId();
+        $this->id = $id;
+        return $this;
     }
 
-    public function setUpdatedAt(\DateTime $updatedAt): void
+    public function setProduct(AbstractProduct $product): self
     {
+        $this->product = $product;
+        $this->productId = $product->getId();
+        return $this;
+    }
+
+    public function getProductId(): int
+    {
+        if ($this->product !== null) {
+            return $this->product->getId();
+        }
+
+        return $this->productId ?? 0;
+    }
+
+    public function setProductId(int $productId): self
+    {
+        $this->productId = $productId;
+        return $this;
+    }
+
+    public function setColor(Color|string|null $color): self
+    {
+        $this->color = $color === null ? null : Color::from($color);
+        return $this;
+    }
+
+    public function setCreatedAt(\DateTime $createdAt): self
+    {
+        $this->createdAt = $createdAt;
+        return $this;
+    }
+
+    public function getCreatedAt(): \DateTime
+    {
+        return $this->createdAt;
+    }
+
+    public function setUpdatedAt(\DateTime $updatedAt): self
+    {
+        $this->updatedAt = $updatedAt;
         $this->lastRestocked = $updatedAt;
+        return $this;
     }
 
     public function getUpdatedAt(): \DateTime
     {
-        return $this->lastRestocked;
+        return $this->updatedAt;
     }
 
-    public function setReservedQuantity(int $reservedQuantity): void
+    public function setReservedQuantity(int $reservedQuantity): self
     {
         $this->reservedQuantity = $reservedQuantity;
+        return $this;
     }
 }

@@ -72,8 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Username and email must be different.';
     }
 
-    if (strlen($password) < 6) {
-        $errors[] = 'Password must be at least 6 characters.';
+    $minimumPasswordLength = defined('MIN_PASSWORD_LENGTH') ? MIN_PASSWORD_LENGTH : 8;
+    if (strlen($password) < $minimumPasswordLength) {
+        $errors[] = 'Password must be at least ' . $minimumPasswordLength . ' characters.';
     } elseif ($password !== $passwordConfirm) {
         $errors[] = 'Passwords do not match.';
     }

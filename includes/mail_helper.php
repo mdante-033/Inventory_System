@@ -88,6 +88,9 @@ class MailHelper
         return ['success' => true, 'message' => 'Email sent successfully.'];
     }
 
+    /**
+     * @param resource $sock
+     */
     private function authLogin($sock): void
     {
         $this->expect($this->cmd($sock, 'AUTH LOGIN'), '334', 'AUTH LOGIN');
@@ -95,12 +98,18 @@ class MailHelper
         $this->expect($this->cmd($sock, base64_encode($this->password)), '235', 'AUTH LOGIN pass');
     }
 
+    /**
+     * @param resource $sock
+     */
     private function authPlain($sock): void
     {
         $cred = base64_encode("\0{$this->username}\0{$this->password}");
         $this->expect($this->cmd($sock, "AUTH PLAIN {$cred}"), '235', 'AUTH PLAIN');
     }
 
+    /**
+     * @param resource $sock
+     */
     private function read($sock): string
     {
         $r = '';
@@ -113,6 +122,9 @@ class MailHelper
         return $r;
     }
 
+    /**
+     * @param resource $sock
+     */
     private function cmd($sock, string $line): string
     {
         fwrite($sock, $line . "\r\n");

@@ -20,6 +20,7 @@ class StockAdjustment
 
     public function setId(?int $id): self { $this->id = $id; return $this; }
     public function setProductVariantId(int $productVariantId): self { $this->productVariantId = $productVariantId; return $this; }
+    public function setVariantId(int $variantId): self { return $this->setProductVariantId($variantId); }
     public function setBarcode(string $barcode): self { $this->barcode = $barcode; return $this; }
     public function setPreviousQuantity(int $previousQuantity): self { $this->previousQuantity = $previousQuantity; return $this; }
     public function setNewQuantity(int $newQuantity): self { $this->newQuantity = $newQuantity; return $this; }

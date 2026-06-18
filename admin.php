@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['action'])) {
                 if ($reorderLevel === false) $reorderLevel = 10;
 
                 if ($hasImage && !$productImageColumnAvailable) {
-                    $result = ['success' => false, 'message' => 'Run /run_setup.php once to add the product image column, then delete it.']; break;
+                    $result = ['success' => false, 'message' => 'Product image uploads are not enabled yet. Apply the product image database migration first.']; break;
                 }
                 $imagePath = null;
                 if ($hasImage) {
@@ -587,7 +587,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['action'])) {
         $result = ['success' => false, 'message' => $friendly];
     } catch (Throwable $e) {
         error_log('Admin Throwable [' . $action . ']: ' . $e->getMessage());
-        $result = ['success' => false, 'message' => trim($e->getMessage()) !== '' ? $e->getMessage() : 'Unable to complete the requested action.'];
+        $result = ['success' => false, 'message' => 'Unable to complete the requested action.'];
     }
 
     echo json_encode($result);

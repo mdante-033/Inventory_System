@@ -10,7 +10,7 @@ require_once __DIR__ . '/modules/payment_module.php';
 require_once __DIR__ . '/includes/mail_helper.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: user_login.php');
+    header('Location: login.php');
     exit();
 }
 

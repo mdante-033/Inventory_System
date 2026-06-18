@@ -17,6 +17,8 @@ class Color
     public const BROWN = 'brown';
     public const GRAY = 'gray';
     public const NAVY = 'navy';
+
+    public string $value;
     
     // Store all colors
     private static $all = [
@@ -57,54 +59,68 @@ class Color
         self::NAVY => '#000080',
     ];
     
-    /**
-     * Get all valid colors
-     */
-    public static function getAll()
+    private function __construct(string $value)
+    {
+        $this->value = $value;
+    }
+
+    public static function getAll(): array
     {
         return self::$all;
     }
     
-    /**
-     * Check if a color is valid
-     */
     public static function isValid($color)
     {
-        return in_array($color, self::$all);
+        $value = self::valueOf($color);
+        return $value !== null && in_array($value, self::$all, true);
     }
     
-    /**
-     * Get display name for a color
-     */
     public static function getDisplayName($color)
     {
-        return isset(self::$displayNames[$color]) ? self::$displayNames[$color] : ucfirst($color);
+        $value = self::valueOf($color);
+        if ($value === null) {
+            return '';
+        }
+
+        return isset(self::$displayNames[$value]) ? self::$displayNames[$value] : ucfirst($value);
     }
     
-    /**
-     * Get hex code for a color
-     */
     public static function getHexCode($color)
     {
-        return isset(self::$hexCodes[$color]) ? self::$hexCodes[$color] : '#CCCCCC';
+        $value = self::valueOf($color);
+        return $value !== null && isset(self::$hexCodes[$value]) ? self::$hexCodes[$value] : '#CCCCCC';
     }
     
-    /**
-     * Emulate tryFrom() method
-     */
-    public static function tryFrom($value)
+    public static function tryFrom($value): ?self
     {
-        return self::isValid($value) ? $value : null;
+        return self::isValid($value) ? self::from($value) : null;
     }
     
-    /**
-     * Emulate from() method
-     */
-    public static function from($value)
+    public static function from($value): self
     {
-        if (!self::isValid($value)) {
-            throw new \InvalidArgumentException("Invalid color: $value");
+        if ($value instanceof self) {
+            return $value;
         }
-        return $value;
+
+        if (!self::isValid($value)) {
+            $color = is_scalar($value) ? (string) $value : get_debug_type($value);
+            throw new \InvalidArgumentException("Invalid color: {$color}");
+        }
+
+        return new self((string) $value);
+    }
+
+    public function __toString(): string
+    {
+        return $this->value;
+    }
+
+    private static function valueOf($color): ?string
+    {
+        if ($color instanceof self) {
+            return $color->value;
+        }
+
+        return is_string($color) ? $color : null;
     }
 }

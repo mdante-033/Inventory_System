@@ -73,7 +73,7 @@ try {
 
         <?php if (!$productImageColumnAvailable): ?>
         <div style="padding: 0 24px 16px; color: var(--text-muted); font-size: 0.92rem;">
-            Run <code>/run_setup.php</code> once to enable product image uploads, then delete the setup file.
+            Product image uploads are not enabled yet. Ask an administrator to apply the product image database migration.
         </div>
         <?php endif; ?>
         

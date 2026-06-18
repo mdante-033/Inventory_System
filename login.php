@@ -15,6 +15,7 @@ require_once $baseDir . '/db_connect.php';
 /** @var PDO|null $pdo */
 require_once $baseDir . '/includes/account_verification_helper.php';
 require_once $baseDir . '/includes/logger.php';
+require_once $baseDir . '/includes/rate_limiter.php';
 
 function redirectPathForRole(string $role): string
 {
@@ -60,56 +61,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
     } else {
         try {
-            ensureUsersRegistrationSchema($pdo);
+            $rateLimiter = new RateLimiter($pdo, strtolower($inputUsername));
+            $lockoutMinutes = max(1, (int) ceil((defined('LOCKOUT_DURATION') ? LOCKOUT_DURATION : 900) / 60));
+            $maxAttempts = defined('MAX_LOGIN_ATTEMPTS') ? MAX_LOGIN_ATTEMPTS : 5;
 
-            $stmt = $pdo->prepare("
-                SELECT id, username, password, email, full_name, role, is_verified, account_status
-                FROM users
-                WHERE (LOWER(username) = LOWER(:login) OR LOWER(email) = LOWER(:login))
-                  AND is_active = TRUE
-                LIMIT 1
-            ");
-            $stmt->execute(['login' => $inputUsername]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$user || !password_verify($inputPassword, $user['password'])) {
-                $errors[] = 'Invalid email, username, or password.';
-                Logger::warn('Invalid login credentials', [
+            if ($rateLimiter->isLimited($maxAttempts, $lockoutMinutes)) {
+                $errors[] = 'Too many failed login attempts. Please wait before trying again.';
+                Logger::warn('Login blocked by rate limiter', [
                     'login' => $inputUsername,
                     'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
                 ]);
-            } elseif (($user['account_status'] ?? 'active') === 'suspended') {
-                $errors[] = 'Your account is suspended. Please contact support.';
-                Logger::warn('Login blocked - account suspended', [
-                    'login' => $inputUsername,
-                    'user_id' => $user['id'],
-                ]);
-            } elseif (!isAccountVerified($user['is_verified']) || ($user['account_status'] ?? 'pending') === 'pending') {
-                session_regenerate_id(true);
-                refreshSessionSecurityMetadata();
-                rotateCSRFToken();
-                setPendingVerificationSession($user);
-                $_SESSION['flash_success'] = 'Your account is not verified yet. Enter the 6-digit code we sent to your email.';
-                Logger::info('Login requires verification', [
-                    'login' => $inputUsername,
-                    'user_id' => $user['id'],
-                ]);
-                header('Location: verify_code.php');
-                exit;
-            } else {
-                createUserSession($user);
+            }
 
-                $updateStmt = $pdo->prepare('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = :id');
-                $updateStmt->execute(['id' => $user['id']]);
+            if ($errors === []) {
+                ensureUsersRegistrationSchema($pdo);
 
-                Logger::info('Login successful', [
-                    'login' => $inputUsername,
-                    'user_id' => $user['id'],
-                    'role' => $user['role'],
-                ]);
+                $stmt = $pdo->prepare("
+                    SELECT id, username, password, email, full_name, role, is_verified, account_status
+                    FROM users
+                    WHERE (LOWER(username) = LOWER(:login) OR LOWER(email) = LOWER(:login))
+                      AND is_active = TRUE
+                    LIMIT 1
+                ");
+                $stmt->execute(['login' => $inputUsername]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                header('Location: ' . redirectPathForRole((string) $user['role']));
-                exit;
+                if (!$user || !password_verify($inputPassword, $user['password'])) {
+                    $rateLimiter->recordAttempt(false);
+                    $errors[] = 'Invalid email, username, or password.';
+                    Logger::warn('Invalid login credentials', [
+                        'login' => $inputUsername,
+                        'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                    ]);
+                } elseif (($user['account_status'] ?? 'active') === 'suspended') {
+                    $rateLimiter->recordAttempt(false);
+                    $errors[] = 'Your account is suspended. Please contact support.';
+                    Logger::warn('Login blocked - account suspended', [
+                        'login' => $inputUsername,
+                        'user_id' => $user['id'],
+                    ]);
+                } elseif (!isAccountVerified($user['is_verified']) || ($user['account_status'] ?? 'pending') === 'pending') {
+                    $rateLimiter->recordAttempt(true);
+                    session_regenerate_id(true);
+                    refreshSessionSecurityMetadata();
+                    rotateCSRFToken();
+                    setPendingVerificationSession($user);
+                    $_SESSION['flash_success'] = 'Your account is not verified yet. Enter the 6-digit code we sent to your email.';
+                    Logger::info('Login requires verification', [
+                        'login' => $inputUsername,
+                        'user_id' => $user['id'],
+                    ]);
+                    header('Location: verify_code.php');
+                    exit;
+                } else {
+                    $rateLimiter->recordAttempt(true);
+                    createUserSession($user);
+
+                    $updateStmt = $pdo->prepare('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = :id');
+                    $updateStmt->execute(['id' => $user['id']]);
+
+                    Logger::info('Login successful', [
+                        'login' => $inputUsername,
+                        'user_id' => $user['id'],
+                        'role' => $user['role'],
+                    ]);
+
+                    header('Location: ' . redirectPathForRole((string) $user['role']));
+                    exit;
+                }
             }
         } catch (PDOException $e) {
             Logger::error('Login PDOException', ['message' => $e->getMessage()]);

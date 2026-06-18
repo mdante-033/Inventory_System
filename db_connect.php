@@ -132,3 +132,12 @@ function isDBConnected(): bool
     global $pdo;
     return $pdo instanceof PDO;
 }
+
+/**
+ * Returns the sanitized database connection error for UI/API responses.
+ */
+function getDBError(): string
+{
+    global $db_connection_error;
+    return $db_connection_error ?: 'Database connection unavailable.';
+}

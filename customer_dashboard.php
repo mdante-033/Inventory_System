@@ -111,7 +111,7 @@ if (isset($_POST['checkout'])) {
                 $message = "Order placed successfully! Order ID: #$order_id ($items_count items - $" . number_format($total, 2) . ")";
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $message = 'Error processing order: ' . $e->getMessage();
+                $message = 'Error processing order. Please try again.';
                 $message_type = 'error';
                 error_log("Checkout error: " . $e->getMessage());
             }
@@ -129,7 +129,7 @@ if (isset($_POST['pay_now'])) {
             $message = 'Database connection unavailable. Please try again later.';
             $message_type = 'error';
         } elseif (!mpesaTransactionsTableExists($pdo)) {
-            $message = 'M-Pesa payments are not ready yet. Run /run_setup.php once, then delete the setup file.';
+            $message = 'M-Pesa payments are not ready yet. Please ask an administrator to complete the payment database migration.';
             $message_type = 'error';
         } else {
             $mpesa = new Mpesa();
