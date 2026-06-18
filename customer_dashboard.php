@@ -732,14 +732,37 @@ $cart_count = array_sum($_SESSION['cart']);
     .panel-title { font-size: .9rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
     .panel-title i { color: var(--gold); }
 
-    .cart-items { }
+    .cart-items {
+        display: flex;
+        flex-direction: column;
+    }
     .cart-item {
-        display: flex; align-items: center; gap: 16px;
-        padding: 18px 24px; border-bottom: 1px solid var(--border);
-        transition: background .2s;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--border);
+        transition: background .2s, border-color .2s;
+    }
+    .cart-item::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--gold);
+        opacity: 0;
+        transition: opacity .2s;
     }
     .cart-item:last-child { border-bottom: none; }
-    .cart-item:hover { background: var(--ink-3); }
+    .cart-item:hover {
+        background: var(--ink-3);
+        border-color: rgba(212,168,83,.18);
+    }
+    .cart-item:hover::before { opacity: 1; }
+    .cart-item:hover .cart-item-name { color: var(--gold); }
 
     .cart-item-img {
         width: 64px; height: 64px; border-radius: 10px;
