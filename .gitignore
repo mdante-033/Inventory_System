@@ -31,3 +31,6 @@ sessions/
 *.sql.gz 
 *.backup 
 *.dump 
+
+# API 
+*.api/
