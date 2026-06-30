@@ -32,5 +32,3 @@ sessions/
 *.backup 
 *.dump 
 
-# API 
-*.api/
