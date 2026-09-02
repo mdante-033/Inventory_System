@@ -11,6 +11,7 @@ desktop.ini
 # IDE files 
 .vscode/ 
 .idea/ 
+api/
 *.swo 
 *.swp 
 *.swn 
