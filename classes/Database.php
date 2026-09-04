@@ -22,9 +22,17 @@ class Database {
         $this->port = getenv('DB_PORT') ?: '5432';
         $this->dbname = getenv('DB_DATABASE') ?: 'Inventory_DB';
         $this->username = getenv('DB_USERNAME') ?: 'postgres';
-        $this->password = getenv('DB_PASSWORD') ?: 'Root';
+
+        $password = getenv('DB_PASSWORD');
+        if ($password === false || $password === '') {
+            throw new RuntimeException(
+                'DB_PASSWORD environment variable is not set. Refusing to fall back to a hardcoded default.'
+            );
+        }
+        $this->password = $password;
+
         $this->charset = 'utf8';
-        
+
         $this->connect();
     }
     
